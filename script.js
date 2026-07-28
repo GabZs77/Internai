@@ -202,7 +202,7 @@ function parseMarkdown(text) {
                     <button onclick="copyCode('${id}')" title="Copiar código">Copiar</button>
                 </div>
             </div>
-            <div class="code-block-body" id="code-body-${id}" style="${lineCount > 15 ? '' : ''}">
+            <div class="code-block-body" id="code-body-${id}">
                 <pre>${highlighted}</pre>
             </div>
             ${lineCount > 15 ? `<div class="code-block-toggle" onclick="toggleCode('${id}', this)">${ICONS.chevronDown} Expandir</div>` : ''}
@@ -275,16 +275,15 @@ function parseInline(text) {
 // ===== DESTAQUE DE SINTAXE =====
 function highlightSyntax(code, lang) {
     lang = (lang || '').toLowerCase();
-    // Regex genérico para sintaxe
     const rules = [
-        { regex: /\/\/.*$/gm, class: 'c1' },          // Comentários linha
-        { regex: /\/\*[\s\S]*?\*\//g, class: 'c1' },  // Comentários bloco
-        { regex: /#.*$/gm, class: 'c1' },              // Comentários Python/Shell
-        { regex: /<!--[\s\S]*?-->/g, class: 'c1' },   // Comentários HTML
-        { regex: /("(?:[^"\\]|\\.)*")/g, class: 's1' }, // Strings duplas
-        { regex: /('(?:[^'\\]|\\.)*')/g, class: 's1' }, // Strings simples
-        { regex: /(`(?:[^`\\]|\\.)*`)/g, class: 's1' }, // Template literals
-        { regex: /\b(\d+\.?\d*)\b/g, class: 'n1' },   // Números
+        { regex: /\/\/.*$/gm, class: 'c1' },
+        { regex: /\/\*[\s\S]*?\*\//g, class: 'c1' },
+        { regex: /#.*$/gm, class: 'c1' },
+        { regex: /<!--[\s\S]*?-->/g, class: 'c1' },
+        { regex: /("(?:[^"\\]|\\.)*")/g, class: 's1' },
+        { regex: /('(?:[^'\\]|\\.)*')/g, class: 's1' },
+        { regex: /(`(?:[^`\\]|\\.)*`)/g, class: 's1' },
+        { regex: /\b(\d+\.?\d*)\b/g, class: 'n1' },
         { regex: /\b(true|false|null|undefined|None|True|False|NaN|Infinity)\b/g, class: 'k2' },
         { regex: /\b(const|let|var|function|return|if|else|for|while|do|switch|case|break|continue|class|import|export|from|default|new|this|super|extends|async|await|try|catch|finally|throw|typeof|instanceof|in|of|yield|delete|void|with|debugger|static|get|set)\b/g, class: 'k1' },
         { regex: /\b(def|print|self|elif|lambda|pass|raise|except|finally|global|nonlocal|assert|with|as|is|not|and|or)\b/g, class: 'k1' },
@@ -293,19 +292,17 @@ function highlightSyntax(code, lang) {
     ];
 
     let result = code;
-    // Aplicar regras com proteção
     rules.forEach(rule => {
         result = result.replace(rule.regex, (match) => {
             return `<span class="hl-${rule.class}">${match}</span>`;
         });
     });
 
-    // Adicionar numeração de linhas
     const lines = result.split('\n');
     return lines.map(line => `<span class="code-line">${line || ' '}</span>`).join('\n');
 }
 
-// ===== ESTILOS DE SYNTAX HIGHLIGHTING (injetados) =====
+// ===== ESTILOS DE SYNTAX HIGHLIGHTING =====
 (function injectHighlightStyles() {
     const style = document.createElement('style');
     style.textContent = `
@@ -412,17 +409,14 @@ function loadConversations() {
 function renderSidebar() {
     const query = DOM.sidebarSearch.value.toLowerCase();
 
-    // Fixadas
     const pinned = state.conversations.filter(c => c.pinned && (!query || c.title.toLowerCase().includes(query)));
     DOM.pinnedSection.style.display = pinned.length ? 'block' : 'none';
     DOM.pinnedList.innerHTML = pinned.map(c => renderConvItem(c)).join('');
 
-    // Favoritas
     const favs = state.conversations.filter(c => c.favorited && !c.pinned && (!query || c.title.toLowerCase().includes(query)));
     DOM.favSection.style.display = favs.length ? 'block' : 'none';
     DOM.favList.innerHTML = favs.map(c => renderConvItem(c)).join('');
 
-    // Normais
     const normal = state.conversations.filter(c => !c.pinned && !c.favorited && (!query || c.title.toLowerCase().includes(query)));
     DOM.convList.innerHTML = normal.length ? normal.map(c => renderConvItem(c)).join('') :
         (query ? '<div style="padding:16px;text-align:center;font-size:12px;color:var(--text-tertiary)">Nenhum resultado</div>' :
@@ -449,6 +443,7 @@ function renderConvItem(conv) {
 // ===== CONTEXTO MENU =====
 function showConvContextMenu(e, convId) {
     e.preventDefault();
+    e.stopPropagation();
     const conv = state.conversations.find(c => c.id === convId);
     if (!conv) return;
     DOM.contextMenu.innerHTML = `
@@ -463,6 +458,7 @@ function showConvContextMenu(e, convId) {
 
 function showMsgContextMenu(e, msgIndex, role) {
     e.preventDefault();
+    e.stopPropagation();
     const conv = getCurrentConversation();
     if (!conv) return;
     const isUser = role === 'user';
@@ -508,7 +504,6 @@ function promptRename(convId) {
     hideContextMenu();
     const conv = state.conversations.find(c => c.id === convId);
     if (!conv) return;
-    // Criar input inline
     const item = document.querySelector(`.conv-item[data-id="${convId}"] .conv-title`);
     if (!item) return;
     const original = conv.title;
@@ -553,17 +548,14 @@ function renderMessage(msg, index) {
         content = `<div class="msg-content"><p>${escapeHtml(msg.content).replace(/\n/g, '<br>')}</p></div>`;
     } else {
         content = `<div class="msg-content" id="msg-content-${index}">${parseMarkdown(msg.content)}</div>`;
-        // Arquivos gerados
         if (msg.generatedFiles && msg.generatedFiles.length) {
             content += `<div style="margin-top:8px">${msg.generatedFiles.map(f => renderGeneratedFile(f)).join('')}</div>`;
         }
-        // Imagens geradas
         if (msg.generatedImages && msg.generatedImages.length) {
             content += msg.generatedImages.map(img => renderGeneratedImage(img)).join('');
         }
     }
 
-    // Ações do usuário
     let userActions = '';
     if (isUser) {
         userActions = `<div class="msg-actions">
@@ -574,7 +566,6 @@ function renderMessage(msg, index) {
         </div>`;
     }
 
-    // Ações da IA
     let aiActions = '';
     if (!isUser) {
         aiActions = `<div class="msg-actions">
@@ -590,7 +581,6 @@ function renderMessage(msg, index) {
             <button class="msg-action-btn" onclick="toggleExpandMsg(${index})" title="Expandir/Recolher" id="expand-btn-${index}">${ICONS.chevronDown}<span>Expandir</span></button>
             <button class="msg-action-btn" onclick="flagMessage(${index})" title="Denunciar">${ICONS.flag}<span>Denunciar</span></button>
         </div>`;
-        // Meta info
         const tokens = estimateTokens(msg.content);
         const responseTime = msg.responseTime ? `${msg.responseTime}s` : '';
         let meta = [];
@@ -658,23 +648,193 @@ function sendSuggestion(title) {
     handleSend();
 }
 
+// ===== CONTROLE DO ESTADO DE GERAÇÃO =====
+function setGenerating(value) {
+    state.isGenerating = value;
+    DOM.sendBtn.style.display = value ? 'none' : 'flex';
+    DOM.stopBtn.style.display = value ? 'flex' : 'none';
+    DOM.messageInput.disabled = value;
+}
+
+function setApiStatus(online) {
+    DOM.statusDot.classList.toggle('offline', !online);
+    DOM.statusText.textContent = online ? 'Online' : 'Offline';
+}
+
+function updateMsgCounter() {
+    const conv = getCurrentConversation();
+    const count = conv ? conv.messages.length : 0;
+    DOM.msgCounter.textContent = `${count} msg${count !== 1 ? 's' : ''}`;
+}
+
+function scrollToBottom() {
+    requestAnimationFrame(() => {
+        DOM.messagesContainer.scrollTop = DOM.messagesContainer.scrollHeight;
+    });
+}
+
+// ===== CONTROLE DE CARACTERES =====
+function updateCharCount() {
+    const len = DOM.messageInput.value.length;
+    DOM.charCount.textContent = `${len} / 4000`;
+    DOM.sendBtn.disabled = len === 0 || state.isGenerating;
+}
+
+// ===== SIDEBAR MOBILE =====
+function openSidebar() {
+    state.sidebarOpen = true;
+    DOM.sidebar.classList.remove('collapsed');
+    DOM.sidebarOverlay.classList.add('active');
+}
+
+function closeSidebar() {
+    state.sidebarOpen = false;
+    DOM.sidebar.classList.add('collapsed');
+    DOM.sidebarOverlay.classList.remove('active');
+}
+
+function closeSidebarMobile() {
+    if (window.innerWidth <= 768) {
+        closeSidebar();
+    }
+}
+
+function toggleSidebar() {
+    if (state.sidebarOpen) {
+        closeSidebar();
+    } else {
+        openSidebar();
+    }
+}
+
+// ===== ARQUIVOS ANEXADOS =====
+function handleFileAttach(files) {
+    for (const file of files) {
+        if (file.size > 5 * 1024 * 1024) {
+            showToast(`Arquivo "${file.name}" excede 5MB`, 'error');
+            continue;
+        }
+        state.attachedFiles.push({
+            file: file,
+            name: file.name,
+            size: file.size,
+            id: generateId()
+        });
+    }
+    renderFilePreview();
+}
+
+function renderFilePreview() {
+    if (state.attachedFiles.length === 0) {
+        DOM.filePreview.style.display = 'none';
+        DOM.filePreview.innerHTML = '';
+        return;
+    }
+    DOM.filePreview.style.display = 'flex';
+    DOM.filePreview.innerHTML = state.attachedFiles.map(f => `
+        <div class="file-preview-item">
+            ${ICONS.file}
+            <span>${escapeHtml(truncateText(f.name, 20))}</span>
+            <button class="remove-file" onclick="removeAttachedFile('${f.id}')">${ICONS.x}</button>
+        </div>
+    `).join('');
+}
+
+function removeAttachedFile(id) {
+    state.attachedFiles = state.attachedFiles.filter(f => f.id !== id);
+    renderFilePreview();
+}
+
+function clearAttachedFiles() {
+    state.attachedFiles = [];
+    renderFilePreview();
+}
+
+function readAttachedFiles() {
+    return new Promise((resolve) => {
+        if (state.attachedFiles.length === 0) {
+            resolve(null);
+            return;
+        }
+        const results = [];
+        let pending = state.attachedFiles.length;
+        state.attachedFiles.forEach(af => {
+            const reader = new FileReader();
+            reader.onload = (e) => {
+                results.push(`--- ${af.name} ---\n${e.target.result}`);
+                pending--;
+                if (pending === 0) resolve(results.join('\n\n'));
+            };
+            reader.onerror = () => {
+                pending--;
+                if (pending === 0) resolve(results.join('\n\n') || null);
+            };
+            // Limitar leitura a 50KB por arquivo
+            const slice = af.file.slice(0, 50000);
+            reader.readAsText(slice);
+        });
+    });
+}
+
+// ===== GRAVAÇÃO DE VOZ =====
+async function startRecording() {
+    try {
+        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        state.mediaRecorder = new MediaRecorder(stream);
+        state.audioChunks = [];
+        state.isRecording = true;
+
+        state.mediaRecorder.ondataavailable = (e) => {
+            if (e.data.size > 0) state.audioChunks.push(e.data);
+        };
+
+        state.mediaRecorder.onstop = () => {
+            stream.getTracks().forEach(t => t.stop());
+            const blob = new Blob(state.audioChunks, { type: 'audio/webm' });
+            const reader = new FileReader();
+            reader.onload = async () => {
+                // Usar a API de reconhecimento de voz do navegador se disponível
+                if ('webkitSpeechRecognition' in window || 'SpeechRecognition' in window) {
+                    showToast('Processando áudio...', 'info');
+                } else {
+                    showToast('Reconhecimento de voz não disponível neste navegador', 'error');
+                }
+            };
+            reader.readAsDataURL(blob);
+            state.isRecording = false;
+            DOM.recordingIndicator.style.display = 'none';
+        };
+
+        state.mediaRecorder.start();
+        DOM.recordingIndicator.style.display = 'flex';
+        DOM.voiceBtn.style.color = '#ef4444';
+    } catch (err) {
+        showToast('Não foi possível acessar o microfone', 'error');
+    }
+}
+
+function stopRecording() {
+    if (state.mediaRecorder && state.isRecording) {
+        state.mediaRecorder.stop();
+        state.isRecording = false;
+        DOM.voiceBtn.style.color = '';
+    }
+}
+
 // ===== API - ENVIO DE MENSAGENS =====
 async function sendMessage(content) {
-    // Criar conversa se não existir
     if (!state.currentConvId) {
         createConversation();
     }
     const conv = getCurrentConversation();
     if (!conv) return;
 
-    // Adicionar mensagem do usuário
     const userMsg = {
         role: 'user',
         content: content,
         timestamp: Date.now()
     };
 
-    // Adicionar conteúdo de arquivos anexados
     if (state.attachedFiles.length > 0) {
         const fileContents = await readAttachedFiles();
         if (fileContents) {
@@ -685,7 +845,6 @@ async function sendMessage(content) {
 
     conv.messages.push(userMsg);
 
-    // Gerar título automaticamente
     if (conv.messages.length === 1) {
         conv.title = truncateText(content, 40);
         DOM.mainTitle.textContent = conv.title;
@@ -696,26 +855,22 @@ async function sendMessage(content) {
     saveConversations();
     renderSidebar();
 
-    // Mostrar indicador de digitação
     showTypingIndicator();
     setGenerating(true);
 
     const startTime = Date.now();
 
     try {
-        // Verificar se é pedido de imagem
         if (isImageRequest(content)) {
             await handleImageGeneration(content, conv, startTime);
             return;
         }
 
-        // Preparar mensagens para a API
         const apiMessages = conv.messages.map(m => ({
             role: m.role,
             content: m.content
         }));
 
-        // Adicionar system prompt para gerar arquivos
         const systemPrompt = {
             role: 'system',
             content: `Você é a Internet IA, um assistente de inteligência artificial avançado, útil e preciso. 
@@ -755,10 +910,8 @@ Seja preciso, detalhado e profissional.`
             throw new Error(`Erro na API: ${response.status}`);
         }
 
-        // Remover indicador de digitação
         hideTypingIndicator();
 
-        // Criar mensagem da IA vazia
         const aiMsg = {
             role: 'assistant',
             content: '',
@@ -770,7 +923,6 @@ Seja preciso, detalhado e profissional.`
         conv.messages.push(aiMsg);
         const aiIndex = conv.messages.length - 1;
 
-        // Stream de resposta
         const reader = response.body.getReader();
         const decoder = new TextDecoder();
         let buffer = '';
@@ -802,11 +954,9 @@ Seja preciso, detalhado e profissional.`
             }
         }
 
-        // Finalizar mensagem
         aiMsg.content = fullContent;
         aiMsg.responseTime = ((Date.now() - startTime) / 1000).toFixed(1);
 
-        // Processar arquivos gerados
         aiMsg.generatedFiles = processGeneratedFiles(fullContent);
         if (aiMsg.generatedFiles.length > 0) {
             aiMsg.content = fullContent.replace(/\[ARQUIVO:[^\]]*\][\s\S]*?\[\/ARQUIVO\]/g, '').trim();
@@ -848,7 +998,6 @@ Seja preciso, detalhado e profissional.`
 function updateStreamingMessage(index, content) {
     const el = document.getElementById(`msg-content-${index}`);
     if (!el) {
-        // Re-renderizar se não existir
         const conv = getCurrentConversation();
         if (conv && conv.messages[index]) {
             renderMessages();
@@ -890,7 +1039,6 @@ function isImageRequest(text) {
 async function handleImageGeneration(prompt, conv, startTime) {
     hideTypingIndicator();
 
-    // Extrair prompt da imagem
     let imagePrompt = prompt;
     const keywords = ['gerar imagem de', 'gerar imagem', 'criar imagem de', 'criar imagem', 'crie uma imagem de', 'crie uma imagem', 'gere uma imagem de', 'gere uma imagem', 'desenhe', 'faça uma imagem de', 'faça uma imagem', 'ilustre', 'imagem de'];
     for (const kw of keywords) {
@@ -904,9 +1052,7 @@ async function handleImageGeneration(prompt, conv, startTime) {
         imagePrompt = prompt;
     }
 
-    // Adicionar qualidade
     const enhancedPrompt = `${imagePrompt}, professional, high quality, detailed, 4k, sharp focus`;
-
     const imageUrl = `${API_CONFIG.imageUrl}${encodeURIComponent(enhancedPrompt)}?width=1024&height=1024&nologo=true&seed=${Math.floor(Math.random() * 999999)}`;
 
     const aiMsg = {
@@ -933,7 +1079,6 @@ function processGeneratedFiles(content) {
         const fileContent = match[2].trim();
         const id = generateId();
         files.push({ id, filename, content: fileContent });
-        // Armazenar para download
         try { sessionStorage.setItem(`file_${id}`, JSON.stringify({ filename, content: fileContent })); } catch (e) {}
     }
     return files;
@@ -972,6 +1117,18 @@ function downloadBlob(blob, filename) {
     URL.revokeObjectURL(url);
 }
 
+// ===== DOWNLOAD DE IMAGEM =====
+function downloadImage(url, filename) {
+    fetch(url)
+        .then(res => res.blob())
+        .then(blob => downloadBlob(blob, filename))
+        .catch(() => {
+            // Fallback: abrir em nova aba
+            window.open(url, '_blank');
+            showToast('Use o botão direito para salvar a imagem', 'info');
+        });
+}
+
 // ===== GERAÇÃO DE PDF =====
 function generatePDF(content, filename) {
     const win = window.open('', '_blank');
@@ -1001,7 +1158,6 @@ function generatePDF(content, filename) {
 
 // ===== GERAÇÃO DE WORD (DOCX simplificado) =====
 function generateWord(content, filename) {
-    // Usar HTML como DOCX (compatível com Word)
     const html = `<html xmlns:o='urn:schemas-microsoft-com:office:office' xmlns:w='urn:schemas-microsoft-com:office:word' xmlns='http://www.w3.org/TR/REC-html40'>
     <head><meta charset="utf-8"><title>${escapeHtml(filename)}</title>
     <style>
@@ -1021,13 +1177,12 @@ function generateWord(content, filename) {
     showToast('Arquivo Word baixado', 'success');
 }
 
-// ===== GERAÇÃO DE EXCEL (XLSX simplificado) =====
+// ===== GERAÇÃO DE EXCEL (XLSX simplificado via CSV) =====
 function generateExcel(content, filename) {
-    // Parsear tabelas do conteúdo
     let csvContent = '';
-    const tableRegex = /<table>[\s\S]*?<\/table>/g;
     const parsedHtml = parseMarkdown(content);
-    let tables = parsedHtml.match(tableRegex);
+    const tableRegex = /<table>[\s\S]*?<\/table>/g;
+    const tables = parsedHtml.match(tableRegex);
 
     if (tables && tables.length > 0) {
         tables.forEach((table, ti) => {
@@ -1047,83 +1202,80 @@ function generateExcel(content, filename) {
             }
         });
     } else {
-        // Se não houver tabelas, criar CSV a partir do texto
+        // Se não houver tabela, converter linhas em CSV
         const lines = content.split('\n').filter(l => l.trim());
         lines.forEach(line => {
             if (line.match(/^\|/)) {
                 const cells = line.split('|').filter(c => c.trim()).map(c => `"${c.trim().replace(/"/g, '""')}"`);
                 csvContent += cells.join(';') + '\n';
+            } else {
+                csvContent += `"${line.replace(/"/g, '""')}"\n`;
             }
         });
     }
 
-    if (!csvContent.trim()) {
-        csvContent = '"Sem dados de tabela encontrados"\n';
-    }
-
-    // Adicionar BOM para UTF-8
+    // BOM para UTF-8 no Excel
     const bom = '\uFEFF';
     const blob = new Blob([bom + csvContent], { type: 'text/csv;charset=utf-8' });
-    downloadBlob(blob, filename.replace('.xlsx', '.csv'));
-    showToast('Arquivo Excel (CSV) baixado', 'success');
+    downloadBlob(blob, filename.replace(/\.xlsx$/i, '.csv'));
+    showToast('Arquivo CSV baixado (compatível com Excel)', 'success');
 }
 
-// ===== GERAÇÃO DE PPTX =====
+// ===== GERAÇÃO DE PPTX (simplificado via HTML) =====
 function generatePPTX(content, filename) {
-    // Gerar HTML de apresentação que pode ser salva
-    const slideRegex = /\[SLIDE:\s*([^\]]*)\]([\s\S]*?)(?=\[SLIDE:|$)/g;
-    let slides = [];
+    // Extrair slides do conteúdo
+    const slideRegex = /\[SLIDE:\s*([^\]]*)\]([\s\S]*?)\[\/SLIDE\]/g;
+    const slides = [];
     let match;
-
-    if (slideRegex.test(content)) {
-        slideRegex.lastIndex = 0;
-        while ((match = slideRegex.exec(content)) !== null) {
-            slides.push({ title: match[1].trim(), content: match[2].trim() });
-        }
+    while ((match = slideRegex.exec(content)) !== null) {
+        slides.push({ title: match[1].trim(), content: match[2].trim() });
     }
 
+    // Se não houver slides no formato especial, criar slides a partir dos cabeçalhos
     if (slides.length === 0) {
-        // Dividir por cabeçalhos
-        const sections = content.split(/\n(?=#{1,3}\s)/);
-        sections.forEach(s => {
-            if (s.trim()) {
-                const lines = s.trim().split('\n');
-                const title = lines[0].replace(/^#+\s*/, '');
-                const body = lines.slice(1).join('\n');
-                slides.push({ title, content: body });
+        const lines = content.split('\n');
+        let currentSlide = null;
+        lines.forEach(line => {
+            const h1Match = line.match(/^#\s+(.+)$/);
+            const h2Match = line.match(/^##\s+(.+)$/);
+            if (h1Match || h2Match) {
+                if (currentSlide) slides.push(currentSlide);
+                currentSlide = { title: (h1Match || h2Match)[1], content: '' };
+            } else if (currentSlide) {
+                currentSlide.content += line + '\n';
             }
         });
+        if (currentSlide) slides.push(currentSlide);
     }
 
+    // Se ainda não houver slides, criar um único slide
     if (slides.length === 0) {
         slides.push({ title: 'Apresentação', content: content });
     }
 
-    const slideHtml = slides.map((slide, i) => `
-        <div style="page-break-after:always;width:960px;height:540px;padding:60px 80px;box-sizing:border-box;display:flex;flex-direction:column;justify-content:center;position:relative;font-family:Calibri,sans-serif;${i === 0 ? 'background:linear-gradient(135deg,#1a1a1a,#333);color:#fff;' : 'background:#fff;color:#333;'}">
-            ${i === 0 ? '<div style="position:absolute;bottom:30px;right:60px;font-size:11px;opacity:0.5">Internet IA</div>' : ''}
-            <div style="font-size:${i === 0 ? 36 : 28}px;font-weight:bold;margin-bottom:24px;line-height:1.2">${escapeHtml(slide.title)}</div>
-            <div style="font-size:${i === 0 ? 18 : 16}px;line-height:1.6;opacity:${i === 0 ? 0.85 : 0.8}">${parseMarkdown(slide.content)}</div>
+    const slidesHtml = slides.map((slide, i) => `
+        <div style="page-break-after:${i < slides.length - 1 ? 'always' : 'auto'};padding:40px;min-height:100vh;display:flex;flex-direction:column;justify-content:center;">
+            <h1 style="font-size:32pt;color:#1a1a1a;margin-bottom:30px;border-bottom:3px solid #333;padding-bottom:15px">${escapeHtml(slide.title)}</h1>
+            <div style="font-size:18pt;line-height:1.8;color:#333">${parseMarkdown(slide.content)}</div>
         </div>
     `).join('');
 
     const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>${escapeHtml(filename)}</title>
-    <style>@media print{body{margin:0}@page{size:960px 540px;margin:0}}</style></head>
-    <body>${slideHtml}<script>setTimeout(()=>window.print(),500)<\/script></body></html>`;
+    <style>
+        body{margin:0;font-family:'Segoe UI',sans-serif}
+        h1{margin:0}h2{font-size:22pt;color:#2a2a2a}h3{font-size:18pt;color:#3a3a3a}
+        p{margin:10px 0}ul,ol{margin:10px 0 10px 30px}li{margin:6px 0}
+        table{width:100%;border-collapse:collapse;margin:15px 0}
+        th,td{border:2px solid #ddd;padding:10px 14px;text-align:left;font-size:14pt}
+        th{background:#f0f0f0;font-weight:bold}
+    </style></head><body>${slidesHtml}</body></html>`;
 
     const win = window.open('', '_blank');
-    if (!win) { showToast('Permita popups para gerar PPTX', 'error'); return; }
+    if (!win) { showToast('Permita popups para gerar apresentação', 'error'); return; }
     win.document.write(html);
     win.document.close();
+    setTimeout(() => { win.print(); }, 500);
     showToast('Apresentação gerada. Use "Salvar como PDF" para exportar.', 'info');
-}
-
-// ===== DOWNLOAD DE IMAGEM =====
-function downloadImage(url, filename) {
-    fetch(url)
-        .then(r => r.blob())
-        .then(blob => downloadBlob(blob, filename))
-        .catch(() => window.open(url, '_blank'));
 }
 
 // ===== AÇÕES DE MENSAGEM =====
@@ -1145,84 +1297,63 @@ function copyMessageMarkdown(index) {
     hideContextMenu();
 }
 
-function copyCode(codeId) {
-    const el = document.getElementById(`code-body-${codeId}`);
-    if (!el) return;
-    const text = el.textContent || el.innerText;
-    navigator.clipboard.writeText(text)
-        .then(() => showToast('Código copiado', 'success'))
-        .catch(() => showToast('Erro ao copiar', 'error'));
-}
-
-function toggleCode(codeId, btn) {
-    const el = document.getElementById(`code-body-${codeId}`);
-    if (!el) return;
-    const isExpanded = el.classList.toggle('expanded');
-    btn.innerHTML = isExpanded ? `${ICONS.chevronUp} Recolher` : `${ICONS.chevronDown} Expandir`;
-}
-
-async function regenerateMessage(index) {
+function editMessage(index) {
     hideContextMenu();
     const conv = getCurrentConversation();
+    if (!conv || !conv.messages[index] || conv.messages[index].role !== 'user') return;
+
+    const msgEl = document.querySelector(`.message[data-index="${index}"] .msg-content`);
+    if (!msgEl) return;
+
+    const original = conv.messages[index].content;
+    msgEl.innerHTML = `<div style="display:flex;flex-direction:column;gap:8px">
+        <textarea id="edit-msg-input" style="width:100%;min-height:80px;padding:10px;border-radius:8px;background:var(--bg-glass);border:1px solid var(--border-hover);color:var(--text-primary);font-family:var(--font);font-size:14px;line-height:1.6;resize:vertical">${escapeHtml(original)}</textarea>
+        <div style="display:flex;gap:8px;justify-content:flex-end">
+            <button onclick="cancelEditMessage(${index})" style="padding:6px 16px;border-radius:6px;background:var(--bg-glass);border:1px solid var(--border);font-size:12px;color:var(--text-secondary)">Cancelar</button>
+            <button onclick="saveEditMessage(${index})" style="padding:6px 16px;border-radius:6px;background:#fff;color:#000;font-size:12px;font-weight:600">Salvar</button>
+        </div>
+    </div>`;
+
+    const input = $('#edit-msg-input');
+    input.focus();
+    input.setSelectionRange(input.value.length, input.value.length);
+}
+
+function cancelEditMessage(index) {
+    renderMessages();
+}
+
+function saveEditMessage(index) {
+    const input = $('#edit-msg-input');
+    if (!input) return;
+    const newContent = input.value.trim();
+    if (!newContent) return;
+
+    const conv = getCurrentConversation();
     if (!conv) return;
-    // Encontrar a pergunta do usuário antes desta resposta
-    let userContent = '';
-    for (let i = index - 1; i >= 0; i--) {
-        if (conv.messages[i].role === 'user') {
-            userContent = conv.messages[i].content;
-            break;
-        }
-    }
-    // Remover esta resposta e todas após ela
-    conv.messages = conv.messages.slice(0, index);
+
+    conv.messages[index].content = newContent;
+    conv.messages[index].timestamp = Date.now();
+
+    // Remover mensagens da IA após esta
+    conv.messages = conv.messages.slice(0, index + 1);
     saveConversations();
     renderMessages();
-    if (userContent) {
-        await sendMessage(userContent);
-    }
+
+    // Reenviar
+    sendMessage(newContent);
 }
 
 function resendMessage(index) {
     hideContextMenu();
     const conv = getCurrentConversation();
-    if (!conv || conv.messages[index].role !== 'user') return;
+    if (!conv || !conv.messages[index]) return;
     const content = conv.messages[index].content;
-    // Remover desta mensagem em diante
+    // Remover esta mensagem e todas as posteriores
     conv.messages = conv.messages.slice(0, index);
     saveConversations();
     renderMessages();
     sendMessage(content);
-}
-
-function editMessage(index) {
-    hideContextMenu();
-    const conv = getCurrentConversation();
-    if (!conv || conv.messages[index].role !== 'user') return;
-    const msgEl = document.querySelector(`.message[data-index="${index}"] .msg-content`);
-    if (!msgEl) return;
-    const original = conv.messages[index].content;
-    msgEl.innerHTML = `<textarea style="width:100%;min-height:60px;padding:8px;background:var(--bg-glass);border:1px solid var(--border-hover);border-radius:var(--radius-sm);font-size:14px;font-family:var(--font);color:var(--text-primary);resize:vertical" id="edit-input-${index}">${escapeHtml(original)}</textarea>
-    <div style="display:flex;gap:8px;margin-top:8px">
-        <button style="padding:6px 16px;background:#fff;color:#000;border-radius:var(--radius-sm);font-size:12px;font-weight:600" onclick="saveEdit(${index})">Salvar e enviar</button>
-        <button style="padding:6px 16px;background:var(--bg-glass);border:1px solid var(--border);border-radius:var(--radius-sm);font-size:12px;color:var(--text-secondary)" onclick="renderMessages()">Cancelar</button>
-    </div>`;
-    const input = $(`#edit-input-${index}`);
-    input.focus();
-    input.setSelectionRange(input.value.length, input.value.length);
-}
-
-function saveEdit(index) {
-    const input = $(`#edit-input-${index}`);
-    if (!input) return;
-    const newContent = input.value.trim();
-    if (!newContent) return;
-    const conv = getCurrentConversation();
-    if (!conv) return;
-    conv.messages[index].content = newContent;
-    conv.messages = conv.messages.slice(0, index + 1);
-    saveConversations();
-    renderMessages();
-    sendMessage(newContent);
 }
 
 function deleteMessage(index) {
@@ -1235,136 +1366,197 @@ function deleteMessage(index) {
     showToast('Mensagem excluída', 'success');
 }
 
+function regenerateMessage(index) {
+    hideContextMenu();
+    const conv = getCurrentConversation();
+    if (!conv || !conv.messages[index]) return;
+
+    // Encontrar a última mensagem do usuário antes desta
+    let userMsgIndex = -1;
+    for (let i = index - 1; i >= 0; i--) {
+        if (conv.messages[i].role === 'user') {
+            userMsgIndex = i;
+            break;
+        }
+    }
+    if (userMsgIndex === -1) {
+        showToast('Nenhuma pergunta encontrada para regenerar', 'error');
+        return;
+    }
+
+    // Remover mensagens a partir do índice
+    conv.messages = conv.messages.slice(0, index);
+    saveConversations();
+    renderMessages();
+
+    // Reenviar a última pergunta do usuário
+    sendMessage(conv.messages[userMsgIndex].content);
+}
+
 function shareMessage(index) {
     hideContextMenu();
     const conv = getCurrentConversation();
     if (!conv || !conv.messages[index]) return;
-    const text = conv.messages[index].content;
+
     if (navigator.share) {
-        navigator.share({ title: 'Internet IA - Resposta', text: text }).catch(() => {});
+        navigator.share({
+            title: 'Internet IA - Resposta',
+            text: conv.messages[index].content
+        }).catch(() => {});
     } else {
-        navigator.clipboard.writeText(text)
-            .then(() => showToast('Resposta copiada para compartilhar', 'success'))
+        navigator.clipboard.writeText(conv.messages[index].content)
+            .then(() => showToast('Texto copiado para compartilhar', 'success'))
             .catch(() => showToast('Erro ao copiar', 'error'));
     }
 }
 
-function rateMessage(index, rating) {
-    showToast(rating === 'up' ? 'Avaliação positiva registrada' : 'Avaliação negativa registrada', 'info');
+function rateMessage(index, type) {
+    const conv = getCurrentConversation();
+    if (!conv || !conv.messages[index]) return;
+    if (!conv.messages[index].rating) {
+        conv.messages[index].rating = {};
+    }
+    conv.messages[index].rating[type] = !conv.messages[index].rating[type];
+    if (type === 'up' && conv.messages[index].rating.up) {
+        conv.messages[index].rating.down = false;
+    }
+    if (type === 'down' && conv.messages[index].rating.down) {
+        conv.messages[index].rating.up = false;
+    }
+    saveConversations();
+    showToast(type === 'up' ? 'Resposta marcada como boa' : 'Resposta marcada como ruim', 'info');
 }
 
 function speakMessage(index) {
     const conv = getCurrentConversation();
     if (!conv || !conv.messages[index]) return;
-    if (window.speechSynthesis.speaking) {
+
+    if ('speechSynthesis' in window) {
         window.speechSynthesis.cancel();
-        showToast('Leitura interrompida', 'info');
-        return;
+        const text = conv.messages[index].content.replace(/[#*`_\[\]()>|-]/g, '').replace(/\n+/g, '. ');
+        const utterance = new SpeechSynthesisUtterance(text);
+        utterance.lang = 'pt-BR';
+        utterance.rate = 1;
+        utterance.pitch = 1;
+        window.speechSynthesis.speak(utterance);
+        showToast('Reproduzindo áudio...', 'info');
+    } else {
+        showToast('Síntese de voz não disponível neste navegador', 'error');
     }
-    const text = conv.messages[index].content.replace(/[#*`|>-]/g, '').replace(/\[ARQUIVO[^\]]*\][\s\S]*?\[\/ARQUIVO\]/g, '');
-    const utterance = new SpeechSynthesisUtterance(text);
-    utterance.lang = 'pt-BR';
-    utterance.rate = 1;
-    window.speechSynthesis.speak(utterance);
-    showToast('Lendo resposta...', 'info');
 }
 
 function toggleExpandMsg(index) {
     const conv = getCurrentConversation();
     if (!conv || !conv.messages[index]) return;
-    const el = document.querySelector(`.message[data-index="${index}"] .msg-content`);
-    const btn = $(`#expand-btn-${index}`);
-    if (!el) return;
-    if (el.style.maxHeight && el.style.maxHeight !== 'none') {
-        el.style.maxHeight = 'none';
-        el.style.overflow = 'visible';
-        if (btn) btn.innerHTML = `${ICONS.chevronUp}<span>Recolher</span>`;
+    const msgEl = document.querySelector(`.message[data-index="${index}"] .msg-content`);
+    if (!msgEl) return;
+    const isExpanded = msgEl.style.maxHeight === 'none';
+    if (isExpanded) {
+        msgEl.style.maxHeight = '300px';
+        msgEl.style.overflow = 'hidden';
     } else {
-        el.style.maxHeight = '300px';
-        el.style.overflow = 'hidden';
-        if (btn) btn.innerHTML = `${ICONS.chevronDown}<span>Expandir</span>`;
+        msgEl.style.maxHeight = 'none';
+        msgEl.style.overflow = 'visible';
     }
 }
 
 function flagMessage(index) {
     hideContextMenu();
-    showToast('Resposta denunciada. Obrigado pelo feedback.', 'info');
+    showToast('Mensagem denunciada. Obrigado pelo feedback.', 'info');
 }
 
-// ===== EXPORTAÇÃO =====
-function exportConversation(format) {
-    const conv = getCurrentConversation();
-    if (!conv || conv.messages.length === 0) {
-        showToast('Nenhuma conversa para exportar', 'error');
-        return;
-    }
-    hideContextMenu();
-    DOM.exportMenu.classList.remove('active');
-
-    switch (format) {
-        case 'txt': exportAsTXT(conv); break;
-        case 'md': exportAsMD(conv); break;
-        case 'pdf': exportAsPDF(conv); break;
-        case 'clipboard': copyFullConversation(conv); break;
-        case 'share': shareConversation(conv); break;
-    }
-}
-
-function exportAsTXT(conv) {
-    let text = `Conversa: ${conv.title}\nData: ${new Date(conv.createdAt).toLocaleString('pt-BR')}\n${'='.repeat(50)}\n\n`;
-    conv.messages.forEach(m => {
-        text += `[${m.role === 'user' ? 'Você' : 'Internet IA'}] - ${m.timestamp ? new Date(m.timestamp).toLocaleString('pt-BR') : ''}\n${m.content}\n\n`;
-    });
-    downloadTextFile(`${conv.title}.txt`, text);
-    showToast('Conversa exportada como TXT', 'success');
-}
-
-function exportAsMD(conv) {
-    let md = `# ${conv.title}\n\n*Exportado em ${new Date().toLocaleString('pt-BR')}*\n\n---\n\n`;
-    conv.messages.forEach(m => {
-        md += `### ${m.role === 'user' ? 'Você' : 'Internet IA'}\n\n${m.content}\n\n---\n\n`;
-    });
-    downloadTextFile(`${conv.title}.md`, md);
-    showToast('Conversa exportada como Markdown', 'success');
-}
-
-function exportAsPDF(conv) {
-    let htmlContent = `<h1>${escapeHtml(conv.title)}</h1><p><em>Exportado em ${new Date().toLocaleString('pt-BR')}</em></p><hr>`;
-    conv.messages.forEach(m => {
-        htmlContent += `<h3>${m.role === 'user' ? 'Você' : 'Internet IA'}</h3>${parseMarkdown(m.content)}<hr>`;
-    });
-    generatePDF(htmlContent, `${conv.title}.pdf`);
-}
-
-function copyFullConversation(conv) {
-    let text = '';
-    conv.messages.forEach(m => {
-        text += `[${m.role === 'user' ? 'Você' : 'Internet IA'}]:\n${m.content}\n\n`;
-    });
+// ===== CÓDIGO - COPIAR E TOGGLE =====
+function copyCode(id) {
+    const body = document.getElementById(`code-body-${id}`);
+    if (!body) return;
+    const pre = body.querySelector('pre');
+    if (!pre) return;
+    const text = pre.textContent;
     navigator.clipboard.writeText(text)
-        .then(() => showToast('Conversa copiada', 'success'))
+        .then(() => {
+            const btn = body.closest('.code-block-wrapper').querySelector('.code-block-actions button');
+            if (btn) {
+                const original = btn.textContent;
+                btn.textContent = 'Copiado!';
+                btn.style.color = '#22c55e';
+                setTimeout(() => {
+                    btn.textContent = original;
+                    btn.style.color = '';
+                }, 2000);
+            }
+            showToast('Código copiado', 'success');
+        })
         .catch(() => showToast('Erro ao copiar', 'error'));
 }
 
-function shareConversation(conv) {
-    if (navigator.share) {
-        navigator.share({ title: conv.title, text: `Conversa no Internet IA:\n${conv.messages.map(m => `[${m.role === 'user' ? 'Você' : 'IA'}]: ${m.content.substring(0, 100)}...`).join('\n')}` }).catch(() => {});
+function toggleCode(id, element) {
+    const body = document.getElementById(`code-body-${id}`);
+    if (!body) return;
+    const isExpanded = body.classList.contains('expanded');
+    if (isExpanded) {
+        body.classList.remove('expanded');
+        element.innerHTML = `${ICONS.chevronDown} Expandir`;
     } else {
-        copyFullConversation(conv);
+        body.classList.add('expanded');
+        element.innerHTML = `${ICONS.chevronUp} Recolher`;
     }
 }
 
+// ===== EXPORTAR MENSAGEM INDIVIDUAL =====
 function exportSingleMessage(index, format) {
     hideContextMenu();
     const conv = getCurrentConversation();
     if (!conv || !conv.messages[index]) return;
     const msg = conv.messages[index];
 
-    if (format === 'txt') {
-        downloadTextFile(`resposta-${index}.txt`, msg.content);
-        showToast('Resposta exportada como TXT', 'success');
-    } else if (format === 'pdf') {
-        generatePDF(msg.content, `resposta-${index}.pdf`);
+    switch (format) {
+        case 'txt':
+            downloadTextFile(`mensagem-${index}.txt`, msg.content);
+            showToast('TXT exportado', 'success');
+            break;
+        case 'pdf':
+            generatePDF(msg.content, `mensagem-${index}.pdf`);
+            break;
+    }
+}
+
+// ===== EXPORTAR CONVERSA COMPLETA =====
+function exportConversation(format) {
+    const conv = getCurrentConversation();
+    if (!conv) { showToast('Nenhuma conversa selecionada', 'error'); return; }
+
+    let textContent = `# ${conv.title}\n\n`;
+    conv.messages.forEach(msg => {
+        const role = msg.role === 'user' ? 'Você' : 'Internet IA';
+        textContent += `## ${role}\n\n${msg.content}\n\n---\n\n`;
+    });
+
+    switch (format) {
+        case 'txt':
+            downloadTextFile(`${conv.title}.txt`, textContent);
+            showToast('Conversa exportada como TXT', 'success');
+            break;
+        case 'md':
+            downloadTextFile(`${conv.title}.md`, textContent);
+            showToast('Conversa exportada como Markdown', 'success');
+            break;
+        case 'pdf':
+            generatePDF(textContent, `${conv.title}.pdf`);
+            break;
+        case 'clipboard':
+            navigator.clipboard.writeText(textContent)
+                .then(() => showToast('Conversa copiada para a área de transferência', 'success'))
+                .catch(() => showToast('Erro ao copiar', 'error'));
+            break;
+        case 'share':
+            if (navigator.share) {
+                navigator.share({ title: conv.title, text: textContent }).catch(() => {});
+            } else {
+                navigator.clipboard.writeText(textContent)
+                    .then(() => showToast('Texto copiado para compartilhar', 'success'))
+                    .catch(() => showToast('Erro ao copiar', 'error'));
+            }
+            break;
     }
 }
 
@@ -1373,326 +1565,150 @@ function exportAllConversations() {
         showToast('Nenhuma conversa para exportar', 'error');
         return;
     }
-    let text = 'Internet IA - Todas as Conversas\n' + '='.repeat(50) + '\n\n';
+
+    let textContent = '# Todas as Conversas - Internet IA\n\n';
     state.conversations.forEach(conv => {
-        text += `Conversa: ${conv.title}\nData: ${new Date(conv.createdAt).toLocaleString('pt-BR')}\n${'-'.repeat(40)}\n`;
-        conv.messages.forEach(m => {
-            text += `[${m.role === 'user' ? 'Você' : 'IA'}]: ${m.content}\n\n`;
+        textContent += `# ${conv.title}\n_Data: ${new Date(conv.createdAt).toLocaleString('pt-BR')}_\n\n`;
+        conv.messages.forEach(msg => {
+            const role = msg.role === 'user' ? 'Você' : 'Internet IA';
+            textContent += `## ${role}\n\n${msg.content}\n\n---\n\n`;
         });
-        text += '\n\n';
+        textContent += '\n\n========\n\n';
     });
-    downloadTextFile('internet-ia-todas-conversas.txt', text);
+
+    downloadTextFile('internet-ia-todas-conversas.md', textContent);
     showToast('Todas as conversas exportadas', 'success');
 }
 
-// ===== ARQUIVOS ANEXADOS =====
-function handleAttachFiles() {
-    DOM.fileInput.click();
-}
-
-function handleFileSelect(e) {
-    const files = Array.from(e.target.files);
-    files.forEach(file => {
-        state.attachedFiles.push(file);
-    });
-    renderFilePreview();
-    DOM.fileInput.value = '';
-}
-
-function renderFilePreview() {
-    if (state.attachedFiles.length === 0) {
-        DOM.filePreview.style.display = 'none';
+// ===== LIMPAR HISTÓRICO =====
+function clearAllHistory() {
+    if (state.conversations.length === 0) {
+        showToast('Nenhum histórico para limpar', 'info');
         return;
     }
-    DOM.filePreview.style.display = 'flex';
-    DOM.filePreview.innerHTML = state.attachedFiles.map((f, i) => `
-        <div class="file-preview-item">
-            ${ICONS.file}
-            <span>${escapeHtml(truncateText(f.name, 20))}</span>
-            <span style="opacity:0.4">(${(f.size / 1024).toFixed(1)}KB)</span>
-            <button class="remove-file" onclick="removeAttachedFile(${i})">${ICONS.x}</button>
-        </div>
-    `).join('');
+    state.conversations = [];
+    state.currentConvId = null;
+    saveConversations();
+    renderSidebar();
+    showWelcome();
+    showToast('Todo o histórico foi excluído', 'success');
 }
 
-function removeAttachedFile(index) {
-    state.attachedFiles.splice(index, 1);
-    renderFilePreview();
+function clearCurrentChat() {
+    const conv = getCurrentConversation();
+    if (!conv) return;
+    conv.messages = [];
+    conv.updatedAt = Date.now();
+    saveConversations();
+    renderMessages();
+    showToast('Conversa limpa', 'success');
 }
 
-function clearAttachedFiles() {
-    state.attachedFiles = [];
-    renderFilePreview();
-}
+// ===== PESQUISA NA CONVERSA =====
+function searchInChat(query) {
+    const conv = getCurrentConversation();
+    if (!conv || !query) {
+        // Limpar destaque
+        $$('.message').forEach(el => {
+            el.style.outline = '';
+            el.style.outlineOffset = '';
+        });
+        DOM.searchChatInfo.textContent = '';
+        return;
+    }
 
-async function readAttachedFiles() {
-    const results = [];
-    for (const file of state.attachedFiles) {
-        try {
-            const text = await file.text();
-            results.push(`--- ${file.name} ---\n${text}`);
-        } catch (e) {
-            results.push(`--- ${file.name} ---\n[Arquivo binário, não foi possível ler o conteúdo]`);
+    const lower = query.toLowerCase();
+    let count = 0;
+    const messageEls = $$('.message');
+
+    messageEls.forEach(el => {
+        const index = parseInt(el.dataset.index);
+        const msg = conv.messages[index];
+        if (msg && msg.content.toLowerCase().includes(lower)) {
+            el.style.outline = '2px solid rgba(255,255,255,0.2)';
+            el.style.outlineOffset = '-2px';
+            count++;
+        } else {
+            el.style.outline = '';
+            el.style.outlineOffset = '';
         }
-    }
-    return results.join('\n\n');
-}
+    });
 
-// ===== GRAVAÇÃO DE VOZ =====
-async function toggleRecording() {
-    if (state.isRecording) {
-        stopRecording();
-        return;
-    }
+    DOM.searchChatInfo.textContent = count > 0 ? `${count} mensagem(ns) encontrada(s)` : 'Nenhum resultado';
 
-    try {
-        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-        state.mediaRecorder = new MediaRecorder(stream);
-        state.audioChunks = [];
-
-        state.mediaRecorder.ondataavailable = (e) => {
-            if (e.data.size > 0) state.audioChunks.push(e.data);
-        };
-
-        state.mediaRecorder.onstop = async () => {
-            stream.getTracks().forEach(t => t.stop());
-            const blob = new Blob(state.audioChunks, { type: 'audio/webm' });
-
-            // Enviar para API de reconhecimento (usando Web Speech API como fallback)
-            if ('webkitSpeechRecognition' in window || 'SpeechRecognition' in window) {
-                showToast('Processando áudio...', 'info');
-                // Tentar transcrever
-                const recognition = new (window.SpeechRecognition || window.webkitSpeechRecognition)();
-                recognition.lang = 'pt-BR';
-                recognition.continuous = false;
-
-                recognition.onresult = (event) => {
-                    const transcript = Array.from(event.results).map(r => r[0].transcript).join('');
-                    DOM.messageInput.value += transcript;
-                    updateCharCount();
-                    autoResizeInput();
-                    showToast('Áudio transcrito', 'success');
-                };
-
-                recognition.onerror = () => {
-                    showToast('Não foi possível transcrever o áudio', 'error');
-                };
-
-                // Criar URL e tentar reconhecer
-                try {
-                    const url = URL.createObjectURL(blob);
-                    // Como SpeechRecognition não aceita URLs diretamente,
-                    // vamos usar um workaround: mostrar que foi gravado
-                    URL.revokeObjectURL(url);
-                    showToast('Gravação concluída. O áudio foi anexado.', 'info');
-                    // Adicionar como "arquivo" anexado
-                    state.attachedFiles.push(new File([blob], 'gravacao.webm', { type: 'audio/webm' }));
-                    renderFilePreview();
-                } catch (e) {
-                    showToast('Erro ao processar áudio', 'error');
-                }
-            } else {
-                state.attachedFiles.push(new File([blob], 'gravacao.webm', { type: 'audio/webm' }));
-                renderFilePreview();
-                showToast('Gravação anexada', 'success');
-            }
-        };
-
-        state.mediaRecorder.start();
-        state.isRecording = true;
-        DOM.recordingIndicator.style.display = 'flex';
-        DOM.voiceBtn.style.color = '#ef4444';
-    } catch (e) {
-        showToast('Não foi possível acessar o microfone', 'error');
+    // Rolar até o primeiro resultado
+    const first = document.querySelector('.message[style*="outline"]');
+    if (first) {
+        first.scrollIntoView({ behavior: 'smooth', block: 'center' });
     }
 }
 
-function stopRecording() {
-    if (state.mediaRecorder && state.isRecording) {
-        state.mediaRecorder.stop();
-        state.isRecording = false;
-        DOM.recordingIndicator.style.display = 'none';
-        DOM.voiceBtn.style.color = '';
+// ===== FULLSCREEN =====
+function toggleFullscreen() {
+    state.fullscreen = !state.fullscreen;
+    DOM.app.classList.toggle('fullscreen', state.fullscreen);
+    DOM.fullscreenBtn.innerHTML = state.fullscreen ? ICONS.minimize : ICONS.maximize;
+
+    if (state.fullscreen && document.documentElement.requestFullscreen) {
+        document.documentElement.requestFullscreen().catch(() => {});
+    } else if (!state.fullscreen && document.exitFullscreen) {
+        document.exitFullscreen().catch(() => {});
     }
 }
 
-// ===== CONTROLES DE UI =====
-function setGenerating(value) {
-    state.isGenerating = value;
-    DOM.sendBtn.style.display = value ? 'none' : 'flex';
-    DOM.stopBtn.style.display = value ? 'flex' : 'none';
-    DOM.messageInput.disabled = value;
+// ===== HANDLER DE ENVIO =====
+function handleSend() {
+    const content = DOM.messageInput.value.trim();
+    if (!content || state.isGenerating) return;
+
+    DOM.messageInput.value = '';
+    updateCharCount();
+    DOM.messageInput.style.height = 'auto';
+
+    sendMessage(content);
 }
 
-function stopGeneration() {
+function handleStop() {
     if (state.abortController) {
         state.abortController.abort();
         state.abortController = null;
     }
 }
 
-function setApiStatus(online) {
-    DOM.statusDot.className = `status-dot ${online ? '' : 'offline'}`;
-    DOM.statusText.textContent = online ? 'Online' : 'Offline';
+// ===== SCROLL =====
+function handleScroll() {
+    const container = DOM.messagesContainer;
+    const isNearBottom = container.scrollHeight - container.scrollTop - container.clientHeight < 100;
+    DOM.scrollBottomBtn.classList.toggle('visible', !isNearBottom);
 }
 
-function updateMsgCounter() {
-    const conv = getCurrentConversation();
-    const count = conv ? conv.messages.length : 0;
-    DOM.msgCounter.textContent = `${count} msg${count !== 1 ? 's' : ''}`;
-}
-
-function updateCharCount() {
-    const len = DOM.messageInput.value.length;
-    DOM.charCount.textContent = `${len} / 4000`;
-    DOM.sendBtn.disabled = len === 0 && state.attachedFiles.length === 0;
-}
-
+// ===== AUTO-RESIZE DO TEXTAREA =====
 function autoResizeInput() {
     const el = DOM.messageInput;
     el.style.height = 'auto';
     el.style.height = Math.min(el.scrollHeight, 200) + 'px';
 }
 
-function scrollToBottom() {
-    requestAnimationFrame(() => {
-        DOM.messagesContainer.scrollTop = DOM.messagesContainer.scrollHeight;
-    });
+// ===== CONFIGURAÇÕES =====
+function applyFontFamily(font) {
+    document.documentElement.style.setProperty('--font', font === 'system' ? "-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif" : "'Inter',sans-serif");
 }
 
-function toggleSidebar() {
-    if (window.innerWidth <= 768) {
-        const isOpen = !DOM.sidebar.classList.contains('collapsed');
-        if (isOpen) {
-            DOM.sidebar.classList.add('collapsed');
-            DOM.sidebarOverlay.classList.remove('active');
-        } else {
-            DOM.sidebar.classList.remove('collapsed');
-            DOM.sidebarOverlay.classList.add('active');
-        }
-    } else {
-        DOM.sidebar.classList.toggle('collapsed');
-    }
+function applyFontSize(size) {
+    DOM.messages.style.fontSize = size + 'px';
 }
 
-function closeSidebarMobile() {
-    if (window.innerWidth <= 768) {
-        DOM.sidebar.classList.add('collapsed');
-        DOM.sidebarOverlay.classList.remove('active');
-    }
-}
-
-function toggleFullscreen() {
-    state.fullscreen = !state.fullscreen;
-    DOM.app.classList.toggle('fullscreen', state.fullscreen);
-    DOM.fullscreenBtn.innerHTML = state.fullscreen ? ICONS.minimize : ICONS.maximize;
-    if (state.fullscreen && !document.fullscreenElement) {
-        document.documentElement.requestFullscreen().catch(() => {});
-    } else if (!state.fullscreen && document.fullscreenElement) {
-        document.exitFullscreen().catch(() => {});
-    }
-}
-
-function toggleSearchInChat() {
-    DOM.searchInChat.classList.toggle('active');
-    if (DOM.searchInChat.classList.contains('active')) {
-        DOM.searchChatInput.focus();
-    } else {
-        DOM.searchChatInput.value = '';
-        DOM.searchChatInfo.textContent = '';
-        clearSearchHighlights();
-    }
-}
-
-function handleSearchInChat() {
-    const query = DOM.searchChatInput.value.toLowerCase().trim();
-    clearSearchHighlights();
-    if (!query) { DOM.searchChatInfo.textContent = ''; return; }
-
-    const messages = DOM.messages.querySelectorAll('.msg-content');
-    let count = 0;
-    messages.forEach(el => {
-        const text = el.textContent.toLowerCase();
-        if (text.includes(query)) {
-            count++;
-            el.style.background = 'rgba(255,255,255,0.05)';
-            el.style.borderRadius = '8px';
-            el.style.padding = '8px';
-        }
-    });
-    DOM.searchChatInfo.textContent = count > 0 ? `${count} ocorrência(s) encontrada(s)` : 'Nenhum resultado';
-}
-
-function clearSearchHighlights() {
-    DOM.messages.querySelectorAll('.msg-content').forEach(el => {
-        el.style.background = '';
-        el.style.borderRadius = '';
-        el.style.padding = '';
-    });
-}
-
-// ===== HANDLER DE ENVIO =====
-function handleSend() {
-    const content = DOM.messageInput.value.trim();
-    if ((!content && state.attachedFiles.length === 0) || state.isGenerating) return;
-    if (content.length > 4000) {
-        showToast('Mensagem muito longa. Máximo 4000 caracteres.', 'error');
-        return;
-    }
-    DOM.messageInput.value = '';
-    autoResizeInput();
-    updateCharCount();
-    sendMessage(content || 'Analise os arquivos anexados.');
-}
-
-// ===== ATALHOS DE TECLADO =====
-document.addEventListener('keydown', (e) => {
-    // Ctrl+Enter para enviar
-    if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
-        e.preventDefault();
-        handleSend();
-    }
-    // Escape para fechar modais
-    if (e.key === 'Escape') {
-        DOM.settingsModal.classList.remove('active');
-        DOM.searchInChat.classList.remove('active');
-        DOM.exportMenu.classList.remove('active');
-        hideContextMenu();
-    }
-    // Ctrl+N para nova conversa
-    if ((e.ctrlKey || e.metaKey) && e.key === 'n') {
-        e.preventDefault();
-        createConversation();
-    }
-    // Ctrl+Shift+F para pesquisar na conversa
-    if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key === 'F') {
-        e.preventDefault();
-        toggleSearchInChat();
-    }
-    // Ctrl+E para exportar
-    if ((e.ctrlKey || e.metaKey) && e.key === 'e') {
-        e.preventDefault();
-        DOM.exportMenu.classList.toggle('active');
-    }
-});
-
-// ===== SCROLL =====
-DOM.messagesContainer.addEventListener('scroll', () => {
-    const { scrollTop, scrollHeight, clientHeight } = DOM.messagesContainer;
-    const isNearBottom = scrollHeight - scrollTop - clientHeight < 100;
-    DOM.scrollBottomBtn.classList.toggle('visible', !isNearBottom);
-});
-
-// ===== EVENT LISTENERS =====
+// ===== INICIALIZAÇÃO DOS EVENT LISTENERS =====
 function initEventListeners() {
     // Sidebar
     DOM.sidebarToggle.addEventListener('click', toggleSidebar);
-    DOM.sidebarClose.addEventListener('click', toggleSidebar);
-    DOM.sidebarOverlay.addEventListener('click', closeSidebarMobile);
-    DOM.newChatBtn.addEventListener('click', () => createConversation());
-
-    // Sidebar search
-    DOM.sidebarSearch.addEventListener('input', () => renderSidebar());
+    DOM.sidebarClose.addEventListener('click', closeSidebar);
+    DOM.sidebarOverlay.addEventListener('click', closeSidebar);
+    DOM.newChatBtn.addEventListener('click', () => {
+        createConversation();
+        DOM.messageInput.focus();
+    });
+    DOM.sidebarSearch.addEventListener('input', renderSidebar);
 
     // Input
     DOM.messageInput.addEventListener('input', () => {
@@ -1700,90 +1716,72 @@ function initEventListeners() {
         autoResizeInput();
     });
     DOM.messageInput.addEventListener('keydown', (e) => {
-        if (e.key === 'Enter' && !e.shiftKey && !e.ctrlKey && !e.metaKey) {
+        if (e.key === 'Enter' && !e.shiftKey) {
             e.preventDefault();
             handleSend();
         }
     });
 
-    // Botões
+    // Botões de envio/parada
     DOM.sendBtn.addEventListener('click', handleSend);
-    DOM.stopBtn.addEventListener('click', stopGeneration);
-    DOM.attachBtn.addEventListener('click', handleAttachFiles);
-    DOM.fileInput.addEventListener('change', handleFileSelect);
-    DOM.voiceBtn.addEventListener('click', toggleRecording);
-    DOM.stopRecordingBtn.addEventListener('click', stopRecording);
-    DOM.clearChatBtn.addEventListener('click', () => {
-        const conv = getCurrentConversation();
-        if (conv) {
-            conv.messages = [];
-            saveConversations();
-            renderMessages();
-            showToast('Conversa limpa', 'success');
+    DOM.stopBtn.addEventListener('click', handleStop);
+
+    // Anexar arquivos
+    DOM.attachBtn.addEventListener('click', () => DOM.fileInput.click());
+    DOM.fileInput.addEventListener('change', (e) => {
+        if (e.target.files.length > 0) {
+            handleFileAttach(e.target.files);
+            e.target.value = '';
         }
     });
-    DOM.scrollBottomBtn.addEventListener('click', scrollToBottom);
-    DOM.fullscreenBtn.addEventListener('click', toggleFullscreen);
 
-    // Export menu
+    // Voz
+    DOM.voiceBtn.addEventListener('click', () => {
+        if (state.isRecording) {
+            stopRecording();
+        } else {
+            startRecording();
+        }
+    });
+    DOM.stopRecordingBtn.addEventListener('click', stopRecording);
+
+    // Limpar chat
+    DOM.clearChatBtn.addEventListener('click', clearCurrentChat);
+
+    // Scroll
+    DOM.messagesContainer.addEventListener('scroll', handleScroll);
+    DOM.scrollBottomBtn.addEventListener('click', scrollToBottom);
+
+    // Menu de exportar
     DOM.exportMenuBtn.addEventListener('click', (e) => {
         e.stopPropagation();
         DOM.exportMenu.classList.toggle('active');
     });
-    DOM.exportMenu.querySelectorAll('.export-menu-item').forEach(item => {
-        item.addEventListener('click', () => exportConversation(item.dataset.format));
+
+    $$('.export-menu-item').forEach(item => {
+        item.addEventListener('click', () => {
+            const format = item.dataset.format;
+            exportConversation(format);
+            DOM.exportMenu.classList.remove('active');
+        });
     });
 
-    // Search in chat
-    DOM.searchChatBtn.addEventListener('click', toggleSearchInChat);
-    DOM.searchChatInput.addEventListener('input', handleSearchInChat);
-
-    // Settings
-    DOM.settingsBtn.addEventListener('click', () => DOM.settingsModal.classList.add('active'));
-    DOM.settingsClose.addEventListener('click', () => DOM.settingsModal.classList.remove('active'));
-    DOM.settingsModal.addEventListener('click', (e) => {
-        if (e.target === DOM.settingsModal) DOM.settingsModal.classList.remove('active');
-    });
-
-    DOM.settingFont.addEventListener('change', (e) => {
-        document.body.style.fontFamily = e.target.value === 'system' ? 'system-ui, sans-serif' : 'Inter, sans-serif';
-        localStorage.setItem('internet_ia_font', e.target.value);
-    });
-
-    DOM.settingFontsize.addEventListener('input', (e) => {
-        document.documentElement.style.fontSize = e.target.value + 'px';
-        localStorage.setItem('internet_ia_fontsize', e.target.value);
-    });
-
-    DOM.settingExportAll.addEventListener('click', exportAllConversations);
-    DOM.settingClearCache.addEventListener('click', () => {
-        sessionStorage.clear();
-        showToast('Cache limpo', 'success');
-    });
-    DOM.settingDeleteAll.addEventListener('click', () => {
-        state.conversations = [];
-        state.currentConvId = null;
-        saveConversations();
-        renderSidebar();
-        showWelcome();
-        DOM.settingsModal.classList.remove('active');
-        showToast('Histórico excluído', 'success');
-    });
-
-    // Sidebar footer buttons
-    DOM.exportAllBtn.addEventListener('click', exportAllConversations);
-    DOM.clearHistoryBtn.addEventListener('click', () => {
-        if (state.conversations.length === 0) {
-            showToast('Nenhuma conversa para limpar', 'info');
-            return;
+    // Pesquisa na conversa
+    DOM.searchChatBtn.addEventListener('click', () => {
+        DOM.searchInChat.classList.toggle('active');
+        if (DOM.searchInChat.classList.contains('active')) {
+            DOM.searchChatInput.focus();
+        } else {
+            DOM.searchChatInput.value = '';
+            searchInChat('');
         }
-        state.conversations = [];
-        state.currentConvId = null;
-        saveConversations();
-        renderSidebar();
-        showWelcome();
-        showToast('Histórico excluído', 'success');
     });
+    DOM.searchChatInput.addEventListener('input', (e) => {
+        searchInChat(e.target.value);
+    });
+
+    // Fullscreen
+    DOM.fullscreenBtn.addEventListener('click', toggleFullscreen);
 
     // Fechar menus ao clicar fora
     document.addEventListener('click', (e) => {
@@ -1793,83 +1791,140 @@ function initEventListeners() {
         if (!e.target.closest('.context-menu')) {
             hideContextMenu();
         }
+        if (!e.target.closest('.search-in-chat') && !e.target.closest('#search-chat-btn')) {
+            DOM.searchInChat.classList.remove('active');
+        }
     });
 
-    // Responsividade
-    window.addEventListener('resize', () => {
-        if (window.innerWidth > 768) {
-            DOM.sidebar.classList.remove('collapsed');
-            DOM.sidebarOverlay.classList.remove('active');
-        } else {
-            if (!state.sidebarOpen) {
-                DOM.sidebar.classList.add('collapsed');
+    // Fechar contexto com Escape
+    document.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape') {
+            hideContextMenu();
+            DOM.exportMenu.classList.remove('active');
+            DOM.searchInChat.classList.remove('active');
+            if (DOM.settingsModal.classList.contains('active')) {
+                DOM.settingsModal.classList.remove('active');
             }
         }
     });
 
-    // Verificar status da API periodicamente
-    checkApiStatus();
-    setInterval(checkApiStatus, 30000);
+    // Configurações
+    DOM.settingsBtn.addEventListener('click', () => {
+        DOM.settingsModal.classList.add('active');
+    });
+    DOM.settingsClose.addEventListener('click', () => {
+        DOM.settingsModal.classList.remove('active');
+    });
+    DOM.settingsModal.addEventListener('click', (e) => {
+        if (e.target === DOM.settingsModal) {
+            DOM.settingsModal.classList.remove('active');
+        }
+    });
+
+    // Config: Fonte
+    DOM.settingFont.addEventListener('change', (e) => {
+        applyFontFamily(e.target.value);
+        localStorage.setItem('internet_ia_font', e.target.value);
+    });
+
+    // Config: Tamanho da fonte
+    DOM.settingFontsize.addEventListener('input', (e) => {
+        applyFontSize(e.target.value);
+        localStorage.setItem('internet_ia_fontsize', e.target.value);
+    });
+
+    // Config: Exportar tudo
+    DOM.settingExportAll.addEventListener('click', exportAllConversations);
+
+    // Config: Limpar cache
+    DOM.settingClearCache.addEventListener('click', () => {
+        sessionStorage.clear();
+        showToast('Cache limpo', 'success');
+    });
+
+    // Config: Excluir tudo
+    DOM.settingDeleteAll.addEventListener('click', clearAllHistory);
+
+    // Sidebar footer buttons
+    DOM.exportAllBtn.addEventListener('click', exportAllConversations);
+    DOM.clearHistoryBtn.addEventListener('click', clearAllHistory);
+
+    // Responsividade
+    window.addEventListener('resize', () => {
+        if (window.innerWidth > 768) {
+            DOM.sidebarOverlay.classList.remove('active');
+            if (!state.sidebarOpen) {
+                DOM.sidebar.classList.remove('collapsed');
+                state.sidebarOpen = true;
+            }
+        }
+    });
+
+    // Fullscreen change event
+    document.addEventListener('fullscreenchange', () => {
+        if (!document.fullscreenElement && state.fullscreen) {
+            state.fullscreen = false;
+            DOM.app.classList.remove('fullscreen');
+            DOM.fullscreenBtn.innerHTML = ICONS.maximize;
+        }
+    });
+
+    // Prevenir envio acidental com arrastar e soltar
+    DOM.messageInput.addEventListener('dragover', (e) => e.preventDefault());
+    DOM.messageInput.addEventListener('drop', (e) => {
+        e.preventDefault();
+        if (e.dataTransfer.files.length > 0) {
+            handleFileAttach(e.dataTransfer.files);
+        }
+    });
 }
 
-// ===== VERIFICAR STATUS DA API =====
-async function checkApiStatus() {
-    try {
-        const response = await fetch(API_CONFIG.url, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'Authorization': `Bearer ${API_CONFIG.key}`
-            },
-            body: JSON.stringify({
-                model: API_CONFIG.model,
-                messages: [{ role: 'user', content: 'hi' }],
-                max_tokens: 1
-            })
-        });
-        setApiStatus(response.ok);
-    } catch (e) {
-        setApiStatus(false);
-    }
-}
-
-// ===== CARREGAR CONFIGURAÇÕES SALVAS =====
-function loadSettings() {
+// ===== CARREGAR PREFERÊNCIAS SALVAS =====
+function loadPreferences() {
     const font = localStorage.getItem('internet_ia_font');
     if (font) {
         DOM.settingFont.value = font;
-        document.body.style.fontFamily = font === 'system' ? 'system-ui, sans-serif' : 'Inter, sans-serif';
+        applyFontFamily(font);
     }
-    const fontsize = localStorage.getItem('internet_ia_fontsize');
-    if (fontsize) {
-        DOM.settingFontsize.value = fontsize;
-        document.documentElement.style.fontSize = fontsize + 'px';
+
+    const fontSize = localStorage.getItem('internet_ia_fontsize');
+    if (fontSize) {
+        DOM.settingFontsize.value = fontSize;
+        applyFontSize(fontSize);
     }
 }
 
 // ===== INICIALIZAÇÃO =====
-function init() {
-    loadSettings();
+function initApp() {
     loadConversations();
+    loadPreferences();
     renderSuggestions();
     renderSidebar();
-    initEventListeners();
 
-    // Sidebar inicial no mobile
+    // Aplicar estado inicial da sidebar
     if (window.innerWidth <= 768) {
         DOM.sidebar.classList.add('collapsed');
+        state.sidebarOpen = false;
+    } else {
+        DOM.sidebar.classList.remove('collapsed');
+        state.sidebarOpen = true;
     }
 
-    // Se há conversas, mostrar a última
+    // Se há conversas, restaurar a última ativa
     if (state.conversations.length > 0) {
-        switchConversation(state.conversations[0].id);
+        // Tentar encontrar a última conversa usada
+        const lastConv = state.conversations[0];
+        switchConversation(lastConv.id);
+    } else {
+        showWelcome();
     }
 
-    // Focar no input
-    DOM.messageInput.focus();
+    initEventListeners();
+    updateCharCount();
 
-    console.log('%c Internet IA v1.0.0 ', 'background:#111;color:#fff;padding:8px 16px;border-radius:8px;font-family:monospace;font-size:14px;');
+    // Foco no input
+    DOM.messageInput.focus();
 }
 
-// Iniciar
-init();
+// ===== INICIAR APLICAÇÃO =====
+document.addEventListener('DOMContentLoaded', initApp);
