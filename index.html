@@ -304,6 +304,22 @@
         .generated-image-actions{display:flex;gap:4px;padding:8px;background:var(--bg-glass)}
         .generated-image-actions button{padding:4px 10px;font-size:11px;color:var(--text-tertiary);border-radius:6px;transition:var(--transition)}
         .generated-image-actions button:hover{background:var(--bg-glass-hover);color:var(--text-primary)}
+
+        /* ===== EDITOR DE IMAGEM / ARQUIVOS EXTRAS ===== */
+        .image-editor-modal{max-width:480px}
+        .image-editor-preview{position:relative;width:100%;max-height:360px;border-radius:var(--radius-sm);overflow:hidden;background:repeating-conic-gradient(#1a1a1a 0% 25%,#0d0d0d 0% 50%) 50%/16px 16px;display:flex;align-items:center;justify-content:center}
+        .image-editor-preview img{max-width:100%;max-height:360px;display:block;object-fit:contain}
+        .image-editor-loading{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;background:rgba(0,0,0,0.6);font-size:12px;color:var(--text-secondary)}
+        .spinner{width:26px;height:26px;border-radius:50%;border:3px solid rgba(255,255,255,0.15);border-top-color:#fff;animation:spin 0.8s linear infinite}
+        @keyframes spin{to{transform:rotate(360deg)}}
+        .image-editor-tools{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:14px}
+        .image-editor-ocr-result{margin-top:12px;padding:10px 12px;background:var(--bg-glass);border:1px solid var(--border);border-radius:var(--radius-sm);font-size:12px;line-height:1.6;max-height:160px;overflow-y:auto;white-space:pre-wrap}
+        .file-preview-item.is-image{padding:4px 8px 4px 4px}
+        .file-preview-item.is-image img{width:22px;height:22px;object-fit:cover;border-radius:4px}
+        .file-preview-item .file-tool-btn{width:18px;height:18px;display:flex;align-items:center;justify-content:center;border-radius:4px;color:var(--text-tertiary)}
+        .file-preview-item .file-tool-btn:hover{background:var(--bg-glass-hover);color:var(--text-primary)}
+        .generated-image-actions button.editor-btn{color:#93c5fd}
+        .ocr-message-block{margin:10px 0;padding:12px 14px;background:var(--bg-glass);border:1px solid var(--border);border-radius:var(--radius-sm);font-size:13px;white-space:pre-wrap}
     </style>
 </head>
 <body>
@@ -527,5 +543,56 @@
         <input type="file" id="file-input" multiple style="display:none" accept=".txt,.md,.json,.js,.ts,.py,.html,.css,.csv,.xml,.yaml,.yml,.log,.sql,.java,.c,.cpp,.rb,.go,.php,.sh,.bat,.ini,.cfg,.conf,.env,.gitignore,.dockerfile,.makefile,.rs,.swift,.kt,.scala,.r,.m,.mm,.pl,.lua,.sql,.graphql,.proto,.toml,.jsonl,.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.png,.jpg,.jpeg,.gif,.webp,.svg">
     </div>
 
+    <!-- MODAL: EDITOR DE IMAGEM COM IA -->
+    <div class="modal-overlay" id="image-editor-modal">
+        <div class="modal image-editor-modal">
+            <div class="modal-header">
+                <h2>Editor de imagem</h2>
+                <button class="modal-close" id="image-editor-close-btn">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                </button>
+            </div>
+            <div class="modal-body">
+                <div class="image-editor-preview">
+                    <img id="image-editor-img" src="" alt="Editor de imagem">
+                    <div class="image-editor-loading" id="image-editor-loading" style="display:none">
+                        <div class="spinner"></div>
+                        <span id="image-editor-loading-text">Processando...</span>
+                    </div>
+                </div>
+                <div class="image-editor-tools">
+                    <button class="setting-btn" id="ie-remove-bg-btn">Remover fundo</button>
+                    <button class="setting-btn" id="ie-enhance-btn">Melhorar qualidade</button>
+                    <button class="setting-btn" id="ie-ocr-btn">Extrair texto (OCR)</button>
+                    <button class="setting-btn" id="ie-reset-btn">Restaurar original</button>
+                </div>
+                <div class="image-editor-ocr-result" id="image-editor-ocr-result" style="display:none"></div>
+                <button class="setting-btn" id="ie-download-btn" style="width:100%;margin-top:8px">Baixar imagem</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- LIBS: leitura e geração de arquivos, OCR e edição de imagem (100% no navegador) -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/mammoth/1.7.0/mammoth.browser.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pptxgenjs/3.12.0/pptxgen.bundle.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/tesseract.js/5.1.0/tesseract.min.js"></script>
+    <script type="module">
+        // Carrega remoção de fundo com IA (WASM, roda 100% no navegador)
+        try {
+            const { removeBackground } = await import('https://cdn.jsdelivr.net/npm/@imgly/background-removal@1.5.5/dist/browser.esm.js');
+            window.__removeBackground = removeBackground;
+        } catch (e) {
+            console.warn('Remoção de fundo indisponível:', e);
+        }
+    </script>
+    <script>
+        if (window.pdfjsLib) {
+            pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+        }
+    </script>
     <script src="script.js"></script>
 </body>
