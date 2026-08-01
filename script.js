@@ -3,15 +3,13 @@
 // Plataforma completa de Inteligência Artificial
 // ===================================================================
 
-// ===== CONFIGURAÇÃO DA API (AGORA USANDO O PROXY) =====
+// ===== CONFIGURAÇÃO DA API =====
 const API_CONFIG = {
-    proxyUrl: 'http://localhost:3000',
-    chatEndpoint: '/api/chat',
-    imageEndpoint: '/api/image',
-    filesEndpoint: '/api/files',
-    searchEndpoint: '/api/search',
+    url: 'https://gen.pollinations.ai/v1/chat/completions',
+    key: 'pk_bJav4nbMa2fZGkqG',
     model: 'openai',
-    imageModel: 'flux'
+    imageModel: 'flux',
+    imageUrl: 'https://image.pollinations.ai/prompt/'
 };
 
 // ===== ESTADO DA APLICAÇÃO =====
@@ -197,10 +195,12 @@ function showToast(message, type = 'info') {
 
 // ===== PARSER DE MARKDOWN =====
 function parseMarkdown(text) {
+    // Tratar caixas informativas
     text = text.replace(/>\s*\[!(info|warning|success|error)\]\s*(.*?)(?=\n|$)/gi, (m, type, content) => {
         return `<div class="info-box ${type.toLowerCase()}">${parseInline(content)}</div>`;
     });
 
+    // Blocos de código
     text = text.replace(/```(\w*)\n([\s\S]*?)```/g, (match, lang, code) => {
         const id = generateId();
         const lines = code.trim().split('\n');
@@ -220,8 +220,10 @@ function parseMarkdown(text) {
         </div>`;
     });
 
+    // Código inline
     text = text.replace(/`([^`]+)`/g, '<code>$1</code>');
 
+    // Tabelas
     text = text.replace(/^(\|.+\|)\n(\|[-| :]+\|)\n((?:\|.+\|\n?)*)/gm, (match, header, sep, body) => {
         const headers = header.split('|').filter(c => c.trim()).map(c => `<th>${parseInline(c.trim())}</th>`).join('');
         const rows = body.trim().split('\n').map(row => {
@@ -231,18 +233,35 @@ function parseMarkdown(text) {
         return `<table><thead><tr>${headers}</tr></thead><tbody>${rows}</tbody></table>`;
     });
 
+    // Cabeçalhos
     text = text.replace(/^#### (.+)$/gm, '<h4>$1</h4>');
     text = text.replace(/^### (.+)$/gm, '<h3>$1</h3>');
     text = text.replace(/^## (.+)$/gm, '<h2>$1</h2>');
     text = text.replace(/^# (.+)$/gm, '<h1>$1</h1>');
+
+    // Linha horizontal
     text = text.replace(/^---$/gm, '<hr>');
+
+    // Blockquotes
     text = text.replace(/^> (.+)$/gm, '<blockquote>$1</blockquote>');
+
+    // Listas ordenadas
     text = text.replace(/^(\d+)\.\s+(.+)$/gm, '<li>$2</li>');
+
+    // Listas não ordenadas
     text = text.replace(/^[-*]\s+(.+)$/gm, '<li>$1</li>');
+
+    // Agrupar LIs em UL
     text = text.replace(/((?:<li>.*<\/li>\n?)+)/g, '<ul>$1</ul>');
+
+    // Parágrafos
     text = text.replace(/\n\n/g, '</p><p>');
     text = text.replace(/\n/g, '<br>');
+
+    // Inline
     text = parseInline(text);
+
+    // Limpar
     text = text.replace(/<p><(h[1-4]|ul|ol|blockquote|div|table|hr|pre)/g, '<$1');
     text = text.replace(/<\/(h[1-4]|ul|ol|blockquote|div|table|pre)><\/p>/g, '</$1>');
     text = text.replace(/<p><\/p>/g, '');
@@ -251,10 +270,15 @@ function parseMarkdown(text) {
 }
 
 function parseInline(text) {
+    // Imagens
     text = text.replace(/!\[([^\]]*)\]\(([^)]+)\)/g, '<img src="$2" alt="$1">');
+    // Links
     text = text.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank" rel="noopener">$1</a>');
+    // Negrito
     text = text.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
+    // Itálico
     text = text.replace(/\*(.+?)\*/g, '<em>$1</em>');
+    // Tachado
     text = text.replace(/~~(.+?)~~/g, '<del>$1</del>');
     return text;
 }
@@ -760,7 +784,7 @@ function clearAttachedFiles() {
     renderFilePreview();
 }
 
-// ===== LEITURA REAL DE ARQUIVOS =====
+// ===== LEITURA REAL DE ARQUIVOS (PDF, WORD, EXCEL, POWERPOINT) =====
 const MAX_EXTRACT_CHARS = 30000;
 
 function readFileAsArrayBuffer(file) {
@@ -864,6 +888,8 @@ async function extractFileContent(af) {
     }
 }
 
+// Lê os arquivos anexados (não-imagem) como texto para incluir no prompt.
+// Imagens são tratadas separadamente (ver getAttachedImagesForVision) para permitir análise visual real.
 async function readAttachedFiles() {
     const nonImageFiles = state.attachedFiles.filter(f => !f.isImage);
     if (nonImageFiles.length === 0) return null;
@@ -879,6 +905,7 @@ async function readAttachedFiles() {
     return results.join('\n\n');
 }
 
+// Converte imagens anexadas em blocos de conteúdo multimodal (para análise visual pela IA)
 async function getAttachedImagesForVision() {
     const imageFiles = state.attachedFiles.filter(f => f.isImage);
     const blocks = [];
@@ -893,7 +920,7 @@ async function getAttachedImagesForVision() {
     return blocks;
 }
 
-// ===== OCR =====
+// ===== OCR (extrair texto de imagens) =====
 async function runOCR(imageSourceUrlOrFile) {
     if (!window.Tesseract) {
         showToast('OCR indisponível', 'error');
@@ -938,6 +965,7 @@ async function startRecording() {
             const blob = new Blob(state.audioChunks, { type: 'audio/webm' });
             const reader = new FileReader();
             reader.onload = async () => {
+                // Usar a API de reconhecimento de voz do navegador se disponível
                 if ('webkitSpeechRecognition' in window || 'SpeechRecognition' in window) {
                     showToast('Processando áudio...', 'info');
                 } else {
@@ -965,7 +993,7 @@ function stopRecording() {
     }
 }
 
-// ===== API - ENVIO DE MENSAGENS (AGORA VIA PROXY) =====
+// ===== API - ENVIO DE MENSAGENS =====
 async function sendMessage(content) {
     if (!state.currentConvId) {
         createConversation();
@@ -1166,11 +1194,11 @@ Entregar a melhor resposta possível com:
 
         state.abortController = new AbortController();
 
-        // Enviar para o PROXY
-        const response = await fetch(`${API_CONFIG.proxyUrl}${API_CONFIG.chatEndpoint}`, {
+        const response = await fetch(API_CONFIG.url, {
             method: 'POST',
             headers: {
-                'Content-Type': 'application/json'
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${API_CONFIG.key}`
             },
             body: JSON.stringify({
                 model: API_CONFIG.model,
@@ -1181,8 +1209,7 @@ Entregar a melhor resposta possível com:
         });
 
         if (!response.ok) {
-            const errorData = await response.json().catch(() => ({}));
-            throw new Error(errorData.error || `Erro na API: ${response.status}`);
+            throw new Error(`Erro na API: ${response.status}`);
         }
 
         hideTypingIndicator();
@@ -1198,7 +1225,6 @@ Entregar a melhor resposta possível com:
         conv.messages.push(aiMsg);
         const aiIndex = conv.messages.length - 1;
 
-        // Processar streaming
         const reader = response.body.getReader();
         const decoder = new TextDecoder();
         let buffer = '';
@@ -1329,7 +1355,7 @@ async function handleImageGeneration(prompt, conv, startTime) {
     }
 
     const enhancedPrompt = `${imagePrompt}, professional, high quality, detailed, 4k, sharp focus`;
-    const imageUrl = `${API_CONFIG.proxyUrl}${API_CONFIG.imageEndpoint}?prompt=${encodeURIComponent(enhancedPrompt)}&width=1024&height=1024&nologo=true&seed=${Math.floor(Math.random() * 999999)}`;
+    const imageUrl = `${API_CONFIG.imageUrl}${encodeURIComponent(enhancedPrompt)}?width=1024&height=1024&nologo=true&seed=${Math.floor(Math.random() * 999999)}`;
 
     const aiMsg = {
         role: 'assistant',
@@ -1399,12 +1425,13 @@ function downloadImage(url, filename) {
         .then(res => res.blob())
         .then(blob => downloadBlob(blob, filename))
         .catch(() => {
+            // Fallback: abrir em nova aba
             window.open(url, '_blank');
             showToast('Use o botão direito para salvar a imagem', 'info');
         });
 }
 
-// ===== EDITOR DE IMAGEM COM IA =====
+// ===== EDITOR DE IMAGEM COM IA (remover fundo, melhorar qualidade, OCR) =====
 const imageEditorState = { originalUrl: null, currentBlobUrl: null };
 
 function openImageEditor(url) {
@@ -1465,6 +1492,7 @@ async function ieEnhanceQuality() {
         ctx.filter = 'contrast(1.08) saturate(1.12) brightness(1.03)';
         ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
 
+        // Leve nitidez (unsharp mask simplificado)
         const sharp = document.createElement('canvas');
         sharp.width = canvas.width; sharp.height = canvas.height;
         const sctx = sharp.getContext('2d');
@@ -1507,7 +1535,7 @@ function ieDownload() {
     downloadImage(DOM.imageEditorImg.src, 'internet-ia-imagem-editada.png');
 }
 
-// ===== GERAÇÃO DE PDF =====
+// ===== GERAÇÃO DE PDF (real, baixado diretamente via jsPDF) =====
 function generatePDF(content, filename) {
     if (!window.jspdf) {
         showToast('Biblioteca de PDF indisponível — gerando via impressão', 'error');
@@ -1529,6 +1557,7 @@ function generatePDF(content, filename) {
             }
         };
 
+        // Conversão simples de markdown -> blocos de texto formatado
         const lines = content.split('\n');
         for (let raw of lines) {
             let line = raw;
@@ -1564,6 +1593,7 @@ function generatePDF(content, filename) {
     }
 }
 
+// Fallback: gera PDF pela caixa de impressão do navegador (caso a lib não carregue)
 function generatePDFViaPrint(content, filename) {
     const win = window.open('', '_blank');
     if (!win) { showToast('Permita popups para gerar PDF', 'error'); return; }
@@ -1590,7 +1620,7 @@ function generatePDFViaPrint(content, filename) {
     showToast('PDF gerado. Use "Salvar como PDF" na janela de impressão.', 'info');
 }
 
-// ===== GERAÇÃO DE WORD =====
+// ===== GERAÇÃO DE WORD (DOCX simplificado) =====
 function generateWord(content, filename) {
     const html = `<html xmlns:o='urn:schemas-microsoft-com:office:office' xmlns:w='urn:schemas-microsoft-com:office:word' xmlns='http://www.w3.org/TR/REC-html40'>
     <head><meta charset="utf-8"><title>${escapeHtml(filename)}</title>
@@ -1611,13 +1641,14 @@ function generateWord(content, filename) {
     showToast('Arquivo Word baixado', 'success');
 }
 
-// ===== GERAÇÃO DE EXCEL =====
+// ===== GERAÇÃO DE EXCEL (arquivo .xlsx real via SheetJS) =====
 function markdownToRows(content) {
+    // Extrai linhas de tabelas markdown (| a | b |) em arrays de arrays
     const lines = content.split('\n').map(l => l.trim()).filter(l => l);
     const rows = [];
     for (const line of lines) {
         if (/^\|.*\|$/.test(line)) {
-            if (/^\|[\s:|-]+\|$/.test(line)) continue;
+            if (/^\|[\s:|-]+\|$/.test(line)) continue; // linha separadora ---|---
             const cells = line.split('|').slice(1, -1).map(c => c.trim());
             rows.push(cells);
         } else {
@@ -1646,7 +1677,7 @@ function generateExcel(content, filename) {
     }
 }
 
-// ===== GERAÇÃO DE PPTX =====
+// ===== GERAÇÃO DE PPTX (arquivo .pptx real via PptxGenJS) =====
 function parseSlidesFromContent(content) {
     const slideRegex = /\[SLIDE:\s*([^\]]*)\]([\s\S]*?)\[\/SLIDE\]/g;
     const slides = [];
@@ -1772,10 +1803,12 @@ function saveEditMessage(index) {
     conv.messages[index].content = newContent;
     conv.messages[index].timestamp = Date.now();
 
+    // Remover mensagens da IA após esta
     conv.messages = conv.messages.slice(0, index + 1);
     saveConversations();
     renderMessages();
 
+    // Reenviar
     sendMessage(newContent);
 }
 
@@ -1784,6 +1817,7 @@ function resendMessage(index) {
     const conv = getCurrentConversation();
     if (!conv || !conv.messages[index]) return;
     const content = conv.messages[index].content;
+    // Remover esta mensagem e todas as posteriores
     conv.messages = conv.messages.slice(0, index);
     saveConversations();
     renderMessages();
@@ -1805,6 +1839,7 @@ function regenerateMessage(index) {
     const conv = getCurrentConversation();
     if (!conv || !conv.messages[index]) return;
 
+    // Encontrar a última mensagem do usuário antes desta
     let userMsgIndex = -1;
     for (let i = index - 1; i >= 0; i--) {
         if (conv.messages[i].role === 'user') {
@@ -1817,10 +1852,12 @@ function regenerateMessage(index) {
         return;
     }
 
+    // Remover mensagens a partir do índice
     conv.messages = conv.messages.slice(0, index);
     saveConversations();
     renderMessages();
 
+    // Reenviar a última pergunta do usuário
     sendMessage(conv.messages[userMsgIndex].content);
 }
 
@@ -2039,6 +2076,7 @@ function clearCurrentChat() {
 function searchInChat(query) {
     const conv = getCurrentConversation();
     if (!conv || !query) {
+        // Limpar destaque
         $$('.message').forEach(el => {
             el.style.outline = '';
             el.style.outlineOffset = '';
@@ -2066,6 +2104,7 @@ function searchInChat(query) {
 
     DOM.searchChatInfo.textContent = count > 0 ? `${count} mensagem(ns) encontrada(s)` : 'Nenhum resultado';
 
+    // Rolar até o primeiro resultado
     const first = document.querySelector('.message[style*="outline"]');
     if (first) {
         first.scrollIntoView({ behavior: 'smooth', block: 'center' });
@@ -2129,6 +2168,7 @@ function applyFontSize(size) {
 
 // ===== INICIALIZAÇÃO DOS EVENT LISTENERS =====
 function initEventListeners() {
+    // Sidebar
     DOM.sidebarToggle.addEventListener('click', toggleSidebar);
     DOM.sidebarClose.addEventListener('click', closeSidebar);
     DOM.sidebarOverlay.addEventListener('click', closeSidebar);
@@ -2138,6 +2178,7 @@ function initEventListeners() {
     });
     DOM.sidebarSearch.addEventListener('input', renderSidebar);
 
+    // Input
     DOM.messageInput.addEventListener('input', () => {
         updateCharCount();
         autoResizeInput();
@@ -2149,9 +2190,11 @@ function initEventListeners() {
         }
     });
 
+    // Botões de envio/parada
     DOM.sendBtn.addEventListener('click', handleSend);
     DOM.stopBtn.addEventListener('click', handleStop);
 
+    // Anexar arquivos
     DOM.attachBtn.addEventListener('click', () => DOM.fileInput.click());
     DOM.fileInput.addEventListener('change', (e) => {
         if (e.target.files.length > 0) {
@@ -2160,6 +2203,7 @@ function initEventListeners() {
         }
     });
 
+    // Voz
     DOM.voiceBtn.addEventListener('click', () => {
         if (state.isRecording) {
             stopRecording();
@@ -2169,11 +2213,14 @@ function initEventListeners() {
     });
     DOM.stopRecordingBtn.addEventListener('click', stopRecording);
 
+    // Limpar chat
     DOM.clearChatBtn.addEventListener('click', clearCurrentChat);
 
+    // Scroll
     DOM.messagesContainer.addEventListener('scroll', handleScroll);
     DOM.scrollBottomBtn.addEventListener('click', scrollToBottom);
 
+    // Menu de exportar
     DOM.exportMenuBtn.addEventListener('click', (e) => {
         e.stopPropagation();
         DOM.exportMenu.classList.toggle('active');
@@ -2187,6 +2234,7 @@ function initEventListeners() {
         });
     });
 
+    // Pesquisa na conversa
     DOM.searchChatBtn.addEventListener('click', () => {
         DOM.searchInChat.classList.toggle('active');
         if (DOM.searchInChat.classList.contains('active')) {
@@ -2200,8 +2248,10 @@ function initEventListeners() {
         searchInChat(e.target.value);
     });
 
+    // Fullscreen
     DOM.fullscreenBtn.addEventListener('click', toggleFullscreen);
 
+    // Fechar menus ao clicar fora
     document.addEventListener('click', (e) => {
         if (!e.target.closest('.export-menu') && !e.target.closest('#export-menu-btn')) {
             DOM.exportMenu.classList.remove('active');
@@ -2214,6 +2264,7 @@ function initEventListeners() {
         }
     });
 
+    // Fechar contexto com Escape
     document.addEventListener('keydown', (e) => {
         if (e.key === 'Escape') {
             hideContextMenu();
@@ -2226,6 +2277,7 @@ function initEventListeners() {
         }
     });
 
+    // Configurações
     DOM.settingsBtn.addEventListener('click', () => {
         DOM.settingsModal.classList.add('active');
     });
@@ -2238,26 +2290,35 @@ function initEventListeners() {
         }
     });
 
+    // Config: Fonte
     DOM.settingFont.addEventListener('change', (e) => {
         applyFontFamily(e.target.value);
         localStorage.setItem('internet_ia_font', e.target.value);
     });
 
+    // Config: Tamanho da fonte
     DOM.settingFontsize.addEventListener('input', (e) => {
         applyFontSize(e.target.value);
         localStorage.setItem('internet_ia_fontsize', e.target.value);
     });
 
+    // Config: Exportar tudo
     DOM.settingExportAll.addEventListener('click', exportAllConversations);
+
+    // Config: Limpar cache
     DOM.settingClearCache.addEventListener('click', () => {
         sessionStorage.clear();
         showToast('Cache limpo', 'success');
     });
+
+    // Config: Excluir tudo
     DOM.settingDeleteAll.addEventListener('click', clearAllHistory);
 
+    // Sidebar footer buttons
     DOM.exportAllBtn.addEventListener('click', exportAllConversations);
     DOM.clearHistoryBtn.addEventListener('click', clearAllHistory);
 
+    // Editor de imagem com IA
     DOM.imageEditorClose.addEventListener('click', closeImageEditor);
     DOM.imageEditorModal.addEventListener('click', (e) => {
         if (e.target === DOM.imageEditorModal) closeImageEditor();
@@ -2268,6 +2329,7 @@ function initEventListeners() {
     DOM.ieResetBtn.addEventListener('click', ieReset);
     DOM.ieDownloadBtn.addEventListener('click', ieDownload);
 
+    // Responsividade
     window.addEventListener('resize', () => {
         if (window.innerWidth > 768) {
             DOM.sidebarOverlay.classList.remove('active');
@@ -2278,6 +2340,7 @@ function initEventListeners() {
         }
     });
 
+    // Fullscreen change event
     document.addEventListener('fullscreenchange', () => {
         if (!document.fullscreenElement && state.fullscreen) {
             state.fullscreen = false;
@@ -2286,6 +2349,7 @@ function initEventListeners() {
         }
     });
 
+    // Prevenir envio acidental com arrastar e soltar
     DOM.messageInput.addEventListener('dragover', (e) => e.preventDefault());
     DOM.messageInput.addEventListener('drop', (e) => {
         e.preventDefault();
@@ -2310,23 +2374,6 @@ function loadPreferences() {
     }
 }
 
-// ===== VERIFICAR STATUS DO PROXY =====
-async function checkProxyStatus() {
-    try {
-        const response = await fetch(`${API_CONFIG.proxyUrl}/status`);
-        if (response.ok) {
-            setApiStatus(true);
-            const data = await response.json();
-            console.log('Proxy status:', data);
-        } else {
-            setApiStatus(false);
-        }
-    } catch (e) {
-        setApiStatus(false);
-        console.warn('Proxy offline:', e.message);
-    }
-}
-
 // ===== INICIALIZAÇÃO =====
 function initApp() {
     loadConversations();
@@ -2334,6 +2381,7 @@ function initApp() {
     renderSuggestions();
     renderSidebar();
 
+    // Aplicar estado inicial da sidebar
     if (window.innerWidth <= 768) {
         DOM.sidebar.classList.add('collapsed');
         state.sidebarOpen = false;
@@ -2342,7 +2390,9 @@ function initApp() {
         state.sidebarOpen = true;
     }
 
+    // Se há conversas, restaurar a última ativa
     if (state.conversations.length > 0) {
+        // Tentar encontrar a última conversa usada
         const lastConv = state.conversations[0];
         switchConversation(lastConv.id);
     } else {
@@ -2351,12 +2401,10 @@ function initApp() {
 
     initEventListeners();
     updateCharCount();
-    checkProxyStatus();
 
-    // Verificar status periodicamente
-    setInterval(checkProxyStatus, 30000);
-
+    // Foco no input
     DOM.messageInput.focus();
 }
 
+// ===== INICIAR APLICAÇÃO =====
 document.addEventListener('DOMContentLoaded', initApp);
