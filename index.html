@@ -305,7 +305,7 @@
         .generated-image-actions button{padding:4px 10px;font-size:11px;color:var(--text-tertiary);border-radius:6px;transition:var(--transition)}
         .generated-image-actions button:hover{background:var(--bg-glass-hover);color:var(--text-primary)}
 
-        /* ===== EDITOR DE IMAGEM ===== */
+        /* ===== EDITOR DE IMAGEM / ARQUIVOS EXTRAS ===== */
         .image-editor-modal{max-width:480px}
         .image-editor-preview{position:relative;width:100%;max-height:360px;border-radius:var(--radius-sm);overflow:hidden;background:repeating-conic-gradient(#1a1a1a 0% 25%,#0d0d0d 0% 50%) 50%/16px 16px;display:flex;align-items:center;justify-content:center}
         .image-editor-preview img{max-width:100%;max-height:360px;display:block;object-fit:contain}
@@ -387,7 +387,7 @@
                 </button>
                 <span class="main-header-title" id="main-title">Internet IA</span>
                 <div class="main-header-right">
-                    <div class="status-dot" id="status-dot" title="Conexão com o servidor"></div>
+                    <div class="status-dot" id="status-dot" title="Conexão com a IA"></div>
                     <span class="status-text" id="status-text">Online</span>
                     <span class="msg-counter" id="msg-counter">0 msgs</span>
                     <button class="main-header-btn" id="search-chat-btn" title="Pesquisar na conversa">
@@ -581,6 +581,7 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/pptxgenjs/3.12.0/pptxgen.bundle.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/tesseract.js/5.1.0/tesseract.min.js"></script>
     <script type="module">
+        // Carrega remoção de fundo com IA (WASM, roda 100% no navegador)
         try {
             const { removeBackground } = await import('https://cdn.jsdelivr.net/npm/@imgly/background-removal@1.5.5/dist/browser.esm.js');
             window.__removeBackground = removeBackground;
@@ -595,4 +596,3 @@
     </script>
     <script src="script.js"></script>
 </body>
-</html>
