@@ -82,7 +82,18 @@ const DOM = {
     settingFontsize: $('#setting-fontsize'),
     settingExportAll: $('#setting-export-all'),
     settingClearCache: $('#setting-clear-cache'),
-    settingDeleteAll: $('#setting-delete-all')
+    settingDeleteAll: $('#setting-delete-all'),
+    imageEditorModal: $('#image-editor-modal'),
+    imageEditorClose: $('#image-editor-close-btn'),
+    imageEditorImg: $('#image-editor-img'),
+    imageEditorLoading: $('#image-editor-loading'),
+    imageEditorLoadingText: $('#image-editor-loading-text'),
+    ieRemoveBgBtn: $('#ie-remove-bg-btn'),
+    ieEnhanceBtn: $('#ie-enhance-btn'),
+    ieOcrBtn: $('#ie-ocr-btn'),
+    ieResetBtn: $('#ie-reset-btn'),
+    ieDownloadBtn: $('#ie-download-btn'),
+    ieOcrResult: $('#image-editor-ocr-result')
 };
 
 // ===== SUGESTÕES INICIAIS =====
@@ -545,7 +556,10 @@ function renderMessage(msg, index) {
 
     let content = '';
     if (isUser) {
-        content = `<div class="msg-content"><p>${escapeHtml(msg.content).replace(/\n/g, '<br>')}</p></div>`;
+        const imgThumbs = (msg.attachedImages && msg.attachedImages.length)
+            ? `<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px">${msg.attachedImages.map(u => `<img src="${u}" style="width:72px;height:72px;object-fit:cover;border-radius:8px;border:1px solid var(--border)">`).join('')}</div>`
+            : '';
+        content = `<div class="msg-content">${imgThumbs}<p>${escapeHtml(msg.content).replace(/\n/g, '<br>')}</p></div>`;
     } else {
         content = `<div class="msg-content" id="msg-content-${index}">${parseMarkdown(msg.content)}</div>`;
         if (msg.generatedFiles && msg.generatedFiles.length) {
@@ -620,6 +634,7 @@ function renderGeneratedImage(img) {
         <div class="generated-image-actions">
             <button onclick="window.open('${img.url}','_blank')">Abrir</button>
             <button onclick="downloadImage('${img.url}','internet-ia-image.png')">Baixar</button>
+            <button class="editor-btn" onclick="openImageEditor('${img.url}')">Editar com IA</button>
         </div>
     </div>`;
 }
@@ -708,18 +723,34 @@ function toggleSidebar() {
 }
 
 // ===== ARQUIVOS ANEXADOS =====
+function fileExt(name) {
+    return (name.split('.').pop() || '').toLowerCase();
+}
+
+function isImageExt(ext) {
+    return ['png', 'jpg', 'jpeg', 'gif', 'webp', 'svg', 'bmp'].includes(ext);
+}
+
 function handleFileAttach(files) {
     for (const file of files) {
-        if (file.size > 5 * 1024 * 1024) {
-            showToast(`Arquivo "${file.name}" excede 5MB`, 'error');
+        if (file.size > 15 * 1024 * 1024) {
+            showToast(`Arquivo "${file.name}" excede 15MB`, 'error');
             continue;
         }
-        state.attachedFiles.push({
+        const ext = fileExt(file.name);
+        const item = {
             file: file,
             name: file.name,
             size: file.size,
-            id: generateId()
-        });
+            ext: ext,
+            isImage: isImageExt(ext),
+            id: generateId(),
+            previewUrl: null
+        };
+        if (item.isImage) {
+            item.previewUrl = URL.createObjectURL(file);
+        }
+        state.attachedFiles.push(item);
     }
     renderFilePreview();
 }
@@ -732,15 +763,18 @@ function renderFilePreview() {
     }
     DOM.filePreview.style.display = 'flex';
     DOM.filePreview.innerHTML = state.attachedFiles.map(f => `
-        <div class="file-preview-item">
-            ${ICONS.file}
+        <div class="file-preview-item ${f.isImage ? 'is-image' : ''}">
+            ${f.isImage ? `<img src="${f.previewUrl}" alt="${escapeHtml(f.name)}">` : ICONS.file}
             <span>${escapeHtml(truncateText(f.name, 20))}</span>
+            ${f.isImage ? `<button class="file-tool-btn" title="Extrair texto (OCR)" onclick="quickOCR('${f.id}')">${ICONS['file-text']}</button>` : ''}
             <button class="remove-file" onclick="removeAttachedFile('${f.id}')">${ICONS.x}</button>
         </div>
     `).join('');
 }
 
 function removeAttachedFile(id) {
+    const f = state.attachedFiles.find(x => x.id === id);
+    if (f && f.previewUrl) URL.revokeObjectURL(f.previewUrl);
     state.attachedFiles = state.attachedFiles.filter(f => f.id !== id);
     renderFilePreview();
 }
@@ -750,30 +784,168 @@ function clearAttachedFiles() {
     renderFilePreview();
 }
 
-function readAttachedFiles() {
-    return new Promise((resolve) => {
-        if (state.attachedFiles.length === 0) {
-            resolve(null);
+// ===== LEITURA REAL DE ARQUIVOS (PDF, WORD, EXCEL, POWERPOINT) =====
+const MAX_EXTRACT_CHARS = 30000;
+
+function readFileAsArrayBuffer(file) {
+    return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(reader.result);
+        reader.onerror = reject;
+        reader.readAsArrayBuffer(file);
+    });
+}
+
+function readFileAsText(file, maxBytes) {
+    return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(reader.result);
+        reader.onerror = reject;
+        reader.readAsText(maxBytes ? file.slice(0, maxBytes) : file);
+    });
+}
+
+function fileToDataURL(file) {
+    return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(reader.result);
+        reader.onerror = reject;
+        reader.readAsDataURL(file);
+    });
+}
+
+async function extractPdfText(file) {
+    if (!window.pdfjsLib) return '[Leitor de PDF indisponível]';
+    const buffer = await readFileAsArrayBuffer(file);
+    const pdf = await pdfjsLib.getDocument({ data: buffer }).promise;
+    let text = '';
+    const maxPages = Math.min(pdf.numPages, 40);
+    for (let i = 1; i <= maxPages; i++) {
+        const page = await pdf.getPage(i);
+        const content = await page.getTextContent();
+        text += content.items.map(it => it.str).join(' ') + '\n\n';
+        if (text.length > MAX_EXTRACT_CHARS) break;
+    }
+    return text.trim() || '[PDF sem texto extraível — pode ser um documento escaneado]';
+}
+
+async function extractDocxText(file) {
+    if (!window.mammoth) return '[Leitor de Word indisponível]';
+    const buffer = await readFileAsArrayBuffer(file);
+    const result = await mammoth.extractRawText({ arrayBuffer: buffer });
+    return (result.value || '').trim();
+}
+
+async function extractXlsxText(file) {
+    if (!window.XLSX) return '[Leitor de Excel indisponível]';
+    const buffer = await readFileAsArrayBuffer(file);
+    const wb = XLSX.read(buffer, { type: 'array' });
+    let out = '';
+    wb.SheetNames.forEach(sheetName => {
+        const sheet = wb.Sheets[sheetName];
+        const csv = XLSX.utils.sheet_to_csv(sheet);
+        out += `## Planilha: ${sheetName}\n${csv}\n\n`;
+    });
+    return out.trim();
+}
+
+async function extractPptxText(file) {
+    if (!window.JSZip) return '[Leitor de PowerPoint indisponível]';
+    const buffer = await readFileAsArrayBuffer(file);
+    const zip = await JSZip.loadAsync(buffer);
+    const slideFiles = Object.keys(zip.files)
+        .filter(name => /^ppt\/slides\/slide\d+\.xml$/.test(name))
+        .sort((a, b) => {
+            const na = parseInt(a.match(/slide(\d+)\.xml/)[1]);
+            const nb = parseInt(b.match(/slide(\d+)\.xml/)[1]);
+            return na - nb;
+        });
+    let out = '';
+    for (let i = 0; i < slideFiles.length; i++) {
+        const xml = await zip.files[slideFiles[i]].async('text');
+        const texts = [...xml.matchAll(/<a:t>([^<]*)<\/a:t>/g)].map(m => m[1]).join(' ');
+        out += `## Slide ${i + 1}\n${texts}\n\n`;
+    }
+    return out.trim() || '[Nenhum texto encontrado na apresentação]';
+}
+
+async function extractFileContent(af) {
+    try {
+        switch (af.ext) {
+            case 'pdf': return await extractPdfText(af.file);
+            case 'doc':
+            case 'docx': return await extractDocxText(af.file);
+            case 'xls':
+            case 'xlsx':
+            case 'csv': return af.ext === 'csv' ? await readFileAsText(af.file, 200000) : await extractXlsxText(af.file);
+            case 'ppt':
+            case 'pptx': return await extractPptxText(af.file);
+            default: return await readFileAsText(af.file, 200000);
+        }
+    } catch (e) {
+        console.error('Erro ao ler arquivo', af.name, e);
+        return `[Não foi possível ler o conteúdo de "${af.name}": ${e.message}]`;
+    }
+}
+
+// Lê os arquivos anexados (não-imagem) como texto para incluir no prompt.
+// Imagens são tratadas separadamente (ver getAttachedImagesForVision) para permitir análise visual real.
+async function readAttachedFiles() {
+    const nonImageFiles = state.attachedFiles.filter(f => !f.isImage);
+    if (nonImageFiles.length === 0) return null;
+    const results = [];
+    for (const af of nonImageFiles) {
+        showToast(`Lendo "${af.name}"...`, 'info');
+        let content = await extractFileContent(af);
+        if (content.length > MAX_EXTRACT_CHARS) {
+            content = content.slice(0, MAX_EXTRACT_CHARS) + '\n\n[...conteúdo truncado...]';
+        }
+        results.push(`--- ${af.name} ---\n${content}`);
+    }
+    return results.join('\n\n');
+}
+
+// Converte imagens anexadas em blocos de conteúdo multimodal (para análise visual pela IA)
+async function getAttachedImagesForVision() {
+    const imageFiles = state.attachedFiles.filter(f => f.isImage);
+    const blocks = [];
+    for (const af of imageFiles) {
+        try {
+            const dataUrl = await fileToDataURL(af.file);
+            blocks.push({ type: 'image_url', image_url: { url: dataUrl } });
+        } catch (e) {
+            console.error('Erro ao converter imagem', e);
+        }
+    }
+    return blocks;
+}
+
+// ===== OCR (extrair texto de imagens) =====
+async function runOCR(imageSourceUrlOrFile) {
+    if (!window.Tesseract) {
+        showToast('OCR indisponível', 'error');
+        return null;
+    }
+    const { data } = await Tesseract.recognize(imageSourceUrlOrFile, 'por+eng');
+    return (data && data.text ? data.text.trim() : '') || '';
+}
+
+async function quickOCR(fileId) {
+    const af = state.attachedFiles.find(f => f.id === fileId);
+    if (!af) return;
+    showToast('Extraindo texto da imagem...', 'info');
+    try {
+        const text = await runOCR(af.file);
+        if (!text) {
+            showToast('Nenhum texto encontrado na imagem', 'info');
             return;
         }
-        const results = [];
-        let pending = state.attachedFiles.length;
-        state.attachedFiles.forEach(af => {
-            const reader = new FileReader();
-            reader.onload = (e) => {
-                results.push(`--- ${af.name} ---\n${e.target.result}`);
-                pending--;
-                if (pending === 0) resolve(results.join('\n\n'));
-            };
-            reader.onerror = () => {
-                pending--;
-                if (pending === 0) resolve(results.join('\n\n') || null);
-            };
-            // Limitar leitura a 50KB por arquivo
-            const slice = af.file.slice(0, 50000);
-            reader.readAsText(slice);
-        });
-    });
+        DOM.messageInput.value = (DOM.messageInput.value ? DOM.messageInput.value + '\n\n' : '') + text;
+        updateCharCount();
+        showToast('Texto extraído e inserido no campo de mensagem', 'success');
+    } catch (e) {
+        showToast('Erro ao processar OCR', 'error');
+    }
 }
 
 // ===== GRAVAÇÃO DE VOZ =====
@@ -835,7 +1007,15 @@ async function sendMessage(content) {
         timestamp: Date.now()
     };
 
+    let visionImages = [];
     if (state.attachedFiles.length > 0) {
+        visionImages = await getAttachedImagesForVision();
+        if (visionImages.length > 0) {
+            userMsg.attachedImages = state.attachedFiles.filter(f => f.isImage).map(f => f.previewUrl);
+            if (!userMsg.content.trim()) {
+                userMsg.content = 'Analise a(s) imagem(ns) anexada(s) e descreva o que você vê em detalhes.';
+            }
+        }
         const fileContents = await readAttachedFiles();
         if (fileContents) {
             userMsg.content += '\n\n---\nArquivos anexados:\n' + fileContents;
@@ -866,10 +1046,19 @@ async function sendMessage(content) {
             return;
         }
 
-        const apiMessages = conv.messages.map(m => ({
-            role: m.role,
-            content: m.content
-        }));
+        const apiMessages = conv.messages.map((m, i) => {
+            const isLast = i === conv.messages.length - 1;
+            if (isLast && m.role === 'user' && visionImages.length > 0) {
+                return {
+                    role: m.role,
+                    content: [
+                        { type: 'text', text: m.content },
+                        ...visionImages
+                    ]
+                };
+            }
+            return { role: m.role, content: m.content };
+        });
 
         const systemPrompt = {
             role: 'system',
@@ -1242,8 +1431,170 @@ function downloadImage(url, filename) {
         });
 }
 
-// ===== GERAÇÃO DE PDF =====
+// ===== EDITOR DE IMAGEM COM IA (remover fundo, melhorar qualidade, OCR) =====
+const imageEditorState = { originalUrl: null, currentBlobUrl: null };
+
+function openImageEditor(url) {
+    imageEditorState.originalUrl = url;
+    imageEditorState.currentBlobUrl = null;
+    DOM.imageEditorImg.src = url;
+    DOM.ieOcrResult.style.display = 'none';
+    DOM.ieOcrResult.textContent = '';
+    DOM.imageEditorModal.classList.add('active');
+}
+
+function closeImageEditor() {
+    DOM.imageEditorModal.classList.remove('active');
+}
+
+function setImageEditorLoading(on, text) {
+    DOM.imageEditorLoading.style.display = on ? 'flex' : 'none';
+    if (text) DOM.imageEditorLoadingText.textContent = text;
+}
+
+async function ieRemoveBackground() {
+    if (!window.__removeBackground) {
+        showToast('Remoção de fundo indisponível neste navegador', 'error');
+        return;
+    }
+    setImageEditorLoading(true, 'Removendo fundo...');
+    try {
+        const blob = await window.__removeBackground(DOM.imageEditorImg.src);
+        const url = URL.createObjectURL(blob);
+        imageEditorState.currentBlobUrl = url;
+        DOM.imageEditorImg.src = url;
+        showToast('Fundo removido', 'success');
+    } catch (e) {
+        console.error(e);
+        showToast('Erro ao remover o fundo', 'error');
+    } finally {
+        setImageEditorLoading(false);
+    }
+}
+
+async function ieEnhanceQuality() {
+    setImageEditorLoading(true, 'Melhorando qualidade...');
+    try {
+        const img = new Image();
+        img.crossOrigin = 'anonymous';
+        await new Promise((resolve, reject) => {
+            img.onload = resolve;
+            img.onerror = reject;
+            img.src = DOM.imageEditorImg.src;
+        });
+        const scale = 1.5;
+        const canvas = document.createElement('canvas');
+        canvas.width = img.width * scale;
+        canvas.height = img.height * scale;
+        const ctx = canvas.getContext('2d');
+        ctx.imageSmoothingEnabled = true;
+        ctx.imageSmoothingQuality = 'high';
+        ctx.filter = 'contrast(1.08) saturate(1.12) brightness(1.03)';
+        ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+
+        // Leve nitidez (unsharp mask simplificado)
+        const sharp = document.createElement('canvas');
+        sharp.width = canvas.width; sharp.height = canvas.height;
+        const sctx = sharp.getContext('2d');
+        sctx.filter = 'blur(1px)';
+        sctx.drawImage(canvas, 0, 0);
+        ctx.globalCompositeOperation = 'source-over';
+
+        const blob = await new Promise(res => canvas.toBlob(res, 'image/png', 0.95));
+        const url = URL.createObjectURL(blob);
+        imageEditorState.currentBlobUrl = url;
+        DOM.imageEditorImg.src = url;
+        showToast('Qualidade melhorada', 'success');
+    } catch (e) {
+        console.error(e);
+        showToast('Não foi possível processar essa imagem (CORS)', 'error');
+    } finally {
+        setImageEditorLoading(false);
+    }
+}
+
+async function ieRunOCR() {
+    setImageEditorLoading(true, 'Extraindo texto...');
+    try {
+        const text = await runOCR(DOM.imageEditorImg.src);
+        DOM.ieOcrResult.style.display = 'block';
+        DOM.ieOcrResult.textContent = text || 'Nenhum texto encontrado na imagem.';
+    } catch (e) {
+        showToast('Erro ao processar OCR', 'error');
+    } finally {
+        setImageEditorLoading(false);
+    }
+}
+
+function ieReset() {
+    DOM.imageEditorImg.src = imageEditorState.originalUrl;
+    DOM.ieOcrResult.style.display = 'none';
+}
+
+function ieDownload() {
+    downloadImage(DOM.imageEditorImg.src, 'internet-ia-imagem-editada.png');
+}
+
+// ===== GERAÇÃO DE PDF (real, baixado diretamente via jsPDF) =====
 function generatePDF(content, filename) {
+    if (!window.jspdf) {
+        showToast('Biblioteca de PDF indisponível — gerando via impressão', 'error');
+        return generatePDFViaPrint(content, filename);
+    }
+    try {
+        const { jsPDF } = window.jspdf;
+        const doc = new jsPDF({ unit: 'pt', format: 'a4' });
+        const marginX = 48;
+        let y = 56;
+        const pageWidth = doc.internal.pageSize.getWidth();
+        const maxWidth = pageWidth - marginX * 2;
+        const pageHeight = doc.internal.pageSize.getHeight();
+
+        const addLine = (h) => {
+            if (y + h > pageHeight - 48) {
+                doc.addPage();
+                y = 56;
+            }
+        };
+
+        // Conversão simples de markdown -> blocos de texto formatado
+        const lines = content.split('\n');
+        for (let raw of lines) {
+            let line = raw;
+            if (/^###\s+/.test(line)) {
+                doc.setFont('helvetica', 'bold'); doc.setFontSize(13);
+                line = line.replace(/^###\s+/, '');
+            } else if (/^##\s+/.test(line)) {
+                doc.setFont('helvetica', 'bold'); doc.setFontSize(15);
+                line = line.replace(/^##\s+/, '');
+            } else if (/^#\s+/.test(line)) {
+                doc.setFont('helvetica', 'bold'); doc.setFontSize(18);
+                line = line.replace(/^#\s+/, '');
+            } else if (/^[-*]\s+/.test(line)) {
+                doc.setFont('helvetica', 'normal'); doc.setFontSize(11);
+                line = '•  ' + line.replace(/^[-*]\s+/, '');
+            } else {
+                doc.setFont('helvetica', 'normal'); doc.setFontSize(11);
+            }
+            line = line.replace(/\*\*(.*?)\*\*/g, '$1').replace(/\*(.*?)\*/g, '$1').replace(/`(.*?)`/g, '$1');
+            if (line.trim() === '') { y += 10; continue; }
+            const wrapped = doc.splitTextToSize(line, maxWidth);
+            for (const w of wrapped) {
+                addLine(16);
+                doc.text(w, marginX, y);
+                y += 16;
+            }
+        }
+        doc.save(filename.endsWith('.pdf') ? filename : filename + '.pdf');
+        showToast('PDF baixado', 'success');
+    } catch (e) {
+        console.error(e);
+        generatePDFViaPrint(content, filename);
+    }
+}
+
+// Fallback: gera PDF pela caixa de impressão do navegador (caso a lib não carregue)
+function generatePDFViaPrint(content, filename) {
     const win = window.open('', '_blank');
     if (!win) { showToast('Permita popups para gerar PDF', 'error'); return; }
     const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>${escapeHtml(filename)}</title>
@@ -1290,61 +1641,50 @@ function generateWord(content, filename) {
     showToast('Arquivo Word baixado', 'success');
 }
 
-// ===== GERAÇÃO DE EXCEL (XLSX simplificado via CSV) =====
-function generateExcel(content, filename) {
-    let csvContent = '';
-    const parsedHtml = parseMarkdown(content);
-    const tableRegex = /<table>[\s\S]*?<\/table>/g;
-    const tables = parsedHtml.match(tableRegex);
-
-    if (tables && tables.length > 0) {
-        tables.forEach((table, ti) => {
-            if (ti > 0) csvContent += '\n\n';
-            const rows = table.match(/<tr>[\s\S]*?<\/tr>/g);
-            if (rows) {
-                rows.forEach(row => {
-                    const cells = row.match(/<t[hd][^>]*>([\s\S]*?)<\/t[hd]>/g);
-                    if (cells) {
-                        const values = cells.map(c => {
-                            const text = c.replace(/<[^>]+>/g, '').replace(/"/g, '""').trim();
-                            return `"${text}"`;
-                        });
-                        csvContent += values.join(';') + '\n';
-                    }
-                });
-            }
-        });
-    } else {
-        // Se não houver tabela, converter linhas em CSV
-        const lines = content.split('\n').filter(l => l.trim());
-        lines.forEach(line => {
-            if (line.match(/^\|/)) {
-                const cells = line.split('|').filter(c => c.trim()).map(c => `"${c.trim().replace(/"/g, '""')}"`);
-                csvContent += cells.join(';') + '\n';
-            } else {
-                csvContent += `"${line.replace(/"/g, '""')}"\n`;
-            }
-        });
+// ===== GERAÇÃO DE EXCEL (arquivo .xlsx real via SheetJS) =====
+function markdownToRows(content) {
+    // Extrai linhas de tabelas markdown (| a | b |) em arrays de arrays
+    const lines = content.split('\n').map(l => l.trim()).filter(l => l);
+    const rows = [];
+    for (const line of lines) {
+        if (/^\|.*\|$/.test(line)) {
+            if (/^\|[\s:|-]+\|$/.test(line)) continue; // linha separadora ---|---
+            const cells = line.split('|').slice(1, -1).map(c => c.trim());
+            rows.push(cells);
+        } else {
+            rows.push([line.replace(/\*\*/g, '')]);
+        }
     }
-
-    // BOM para UTF-8 no Excel
-    const bom = '\uFEFF';
-    const blob = new Blob([bom + csvContent], { type: 'text/csv;charset=utf-8' });
-    downloadBlob(blob, filename.replace(/\.xlsx$/i, '.csv'));
-    showToast('Arquivo CSV baixado (compatível com Excel)', 'success');
+    return rows;
 }
 
-// ===== GERAÇÃO DE PPTX (simplificado via HTML) =====
-function generatePPTX(content, filename) {
-    // Extrair slides do conteúdo
+function generateExcel(content, filename) {
+    const outName = filename.replace(/\.(xlsx|csv)$/i, '') + '.xlsx';
+    if (!window.XLSX) {
+        showToast('Biblioteca de Excel indisponível', 'error');
+        return;
+    }
+    try {
+        const rows = markdownToRows(content);
+        const ws = XLSX.utils.aoa_to_sheet(rows.length ? rows : [['(sem dados)']]);
+        const wb = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(wb, ws, 'Planilha1');
+        XLSX.writeFile(wb, outName);
+        showToast('Arquivo Excel (.xlsx) baixado', 'success');
+    } catch (e) {
+        console.error(e);
+        showToast('Erro ao gerar Excel', 'error');
+    }
+}
+
+// ===== GERAÇÃO DE PPTX (arquivo .pptx real via PptxGenJS) =====
+function parseSlidesFromContent(content) {
     const slideRegex = /\[SLIDE:\s*([^\]]*)\]([\s\S]*?)\[\/SLIDE\]/g;
     const slides = [];
     let match;
     while ((match = slideRegex.exec(content)) !== null) {
         slides.push({ title: match[1].trim(), content: match[2].trim() });
     }
-
-    // Se não houver slides no formato especial, criar slides a partir dos cabeçalhos
     if (slides.length === 0) {
         const lines = content.split('\n');
         let currentSlide = null;
@@ -1360,35 +1700,50 @@ function generatePPTX(content, filename) {
         });
         if (currentSlide) slides.push(currentSlide);
     }
-
-    // Se ainda não houver slides, criar um único slide
     if (slides.length === 0) {
         slides.push({ title: 'Apresentação', content: content });
     }
+    return slides;
+}
 
-    const slidesHtml = slides.map((slide, i) => `
-        <div style="page-break-after:${i < slides.length - 1 ? 'always' : 'auto'};padding:40px;min-height:100vh;display:flex;flex-direction:column;justify-content:center;">
-            <h1 style="font-size:32pt;color:#1a1a1a;margin-bottom:30px;border-bottom:3px solid #333;padding-bottom:15px">${escapeHtml(slide.title)}</h1>
-            <div style="font-size:18pt;line-height:1.8;color:#333">${parseMarkdown(slide.content)}</div>
-        </div>
-    `).join('');
+function generatePPTX(content, filename) {
+    const outName = filename.replace(/\.pptx$/i, '') + '.pptx';
+    if (!window.PptxGenJS) {
+        showToast('Biblioteca de PowerPoint indisponível', 'error');
+        return;
+    }
+    try {
+        const slides = parseSlidesFromContent(content);
+        const pres = new PptxGenJS();
+        pres.defineLayout({ name: 'WIDE', width: 10, height: 5.63 });
+        pres.layout = 'WIDE';
 
-    const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>${escapeHtml(filename)}</title>
-    <style>
-        body{margin:0;font-family:'Segoe UI',sans-serif}
-        h1{margin:0}h2{font-size:22pt;color:#2a2a2a}h3{font-size:18pt;color:#3a3a3a}
-        p{margin:10px 0}ul,ol{margin:10px 0 10px 30px}li{margin:6px 0}
-        table{width:100%;border-collapse:collapse;margin:15px 0}
-        th,td{border:2px solid #ddd;padding:10px 14px;text-align:left;font-size:14pt}
-        th{background:#f0f0f0;font-weight:bold}
-    </style></head><body>${slidesHtml}</body></html>`;
+        slides.forEach(slide => {
+            const s = pres.addSlide();
+            s.background = { color: '111111' };
+            s.addText(slide.title || 'Slide', {
+                x: 0.5, y: 0.35, w: 9, h: 0.9,
+                fontSize: 28, bold: true, color: 'FFFFFF', fontFace: 'Arial'
+            });
+            const bodyLines = slide.content
+                .split('\n')
+                .map(l => l.replace(/^[-*]\s+/, '').replace(/^#+\s+/, '').replace(/\*\*/g, '').trim())
+                .filter(l => l);
+            const textItems = bodyLines.length
+                ? bodyLines.map(l => ({ text: l, options: { bullet: true, breakLine: true } }))
+                : [{ text: ' ', options: {} }];
+            s.addText(textItems, {
+                x: 0.5, y: 1.4, w: 9, h: 3.9,
+                fontSize: 16, color: 'E5E5E5', fontFace: 'Arial', valign: 'top'
+            });
+        });
 
-    const win = window.open('', '_blank');
-    if (!win) { showToast('Permita popups para gerar apresentação', 'error'); return; }
-    win.document.write(html);
-    win.document.close();
-    setTimeout(() => { win.print(); }, 500);
-    showToast('Apresentação gerada. Use "Salvar como PDF" para exportar.', 'info');
+        pres.writeFile({ fileName: outName });
+        showToast('Apresentação (.pptx) baixada', 'success');
+    } catch (e) {
+        console.error(e);
+        showToast('Erro ao gerar apresentação', 'error');
+    }
 }
 
 // ===== AÇÕES DE MENSAGEM =====
@@ -1918,6 +2273,7 @@ function initEventListeners() {
             if (DOM.settingsModal.classList.contains('active')) {
                 DOM.settingsModal.classList.remove('active');
             }
+            DOM.imageEditorModal.classList.remove('active');
         }
     });
 
@@ -1961,6 +2317,17 @@ function initEventListeners() {
     // Sidebar footer buttons
     DOM.exportAllBtn.addEventListener('click', exportAllConversations);
     DOM.clearHistoryBtn.addEventListener('click', clearAllHistory);
+
+    // Editor de imagem com IA
+    DOM.imageEditorClose.addEventListener('click', closeImageEditor);
+    DOM.imageEditorModal.addEventListener('click', (e) => {
+        if (e.target === DOM.imageEditorModal) closeImageEditor();
+    });
+    DOM.ieRemoveBgBtn.addEventListener('click', ieRemoveBackground);
+    DOM.ieEnhanceBtn.addEventListener('click', ieEnhanceQuality);
+    DOM.ieOcrBtn.addEventListener('click', ieRunOCR);
+    DOM.ieResetBtn.addEventListener('click', ieReset);
+    DOM.ieDownloadBtn.addEventListener('click', ieDownload);
 
     // Responsividade
     window.addEventListener('resize', () => {
