@@ -1,21 +1,21 @@
 [
   {
     "id": 1,
-    "name": "Pular vídeos do Khan Academy",
-    "description": "Pula automaticamente vídeos e vai direto para os exercícios.",
-    "platform": "Khan Academy",
-    "type": "bookmarklet",
-    "status": "on",
-    "code": "javascript:(function(){ alert('Pulando vídeo...'); })();"
+    "name": "Taskitos",
+    "description": "Hack pra Tarefas (Não funciona com Internet da escola).",
+    "platform": "Tarefa SP, Sala do Futuro",
+    "type": "link",
+    "status": "off",
+    "code": "https://taskitos.cupiditys.lol"
   },
   {
     "id": 2,
-    "name": "Responder atividades CMSP",
-    "description": "Ajuda a responder atividades do CMSP mostrando respostas corretas.",
-    "platform": "CMSP",
-    "type": "bookmarklet",
+    "name": "CMSP - Sala do Futuro",
+    "description": "Sala do Futuro com scripts.",
+    "platform": "CMSP, Sala do Futuro",
+    "type": "link",
     "status": "on",
-    "code": "javascript:(function(){ alert('Respostas carregadas!'); })();"
+    "code": "https://platformdestroyer.fun/"
   },
   {
     "id": 3,
