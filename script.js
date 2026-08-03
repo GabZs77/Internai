@@ -24,7 +24,9 @@ const state = {
     audioChunks: [],
     attachedFiles: [],
     searchQuery: '',
-    fullscreen: false
+    fullscreen: false,
+    commandContext: null, // { type: 'sdf', waitingFor: 'platform' }
+    scriptsCache: null
 };
 
 // ===== ELEMENTOS DO DOM =====
@@ -993,8 +995,176 @@ function stopRecording() {
     }
 }
 
-// ===== API - ENVIO DE MENSAGENS =====
+// ===== SUPORTE AO COMANDO /SDF =====
+
+async function loadScripts() {
+    if (state.scriptsCache) return state.scriptsCache;
+    try {
+        const resp = await fetch('scripts.json');
+        if (!resp.ok) throw new Error('Arquivo não encontrado');
+        const data = await resp.json();
+        state.scriptsCache = data;
+        return data;
+    } catch (e) {
+        console.warn('Erro ao carregar scripts.json:', e);
+        return [];
+    }
+}
+
+function normalizePlatform(input) {
+    return input.trim().toLowerCase();
+}
+
+function searchScripts(scripts, platform) {
+    const norm = normalizePlatform(platform);
+    return scripts.filter(s =>
+        s.status === 'on' &&
+        normalizePlatform(s.platform).includes(norm)
+    );
+}
+
+function renderScriptCards(scripts) {
+    if (!scripts.length) {
+        return `<p style="color:var(--text-secondary);">Atualmente não encontrei nenhum script para essa plataforma que esteja funcionando.</p>`;
+    }
+
+    let html = `<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:16px;margin-top:16px;">`;
+    scripts.forEach((s, idx) => {
+        const isLink = s.type === 'link';
+        const actionBtn = isLink
+            ? `<button class="script-btn primary" onclick="openScript('${s.url}')">Abrir</button>`
+            : `<button class="script-btn secondary" onclick="copyScript('${s.code.replace(/'/g, "\\'")}')">Copiar</button>`;
+
+        html += `
+            <div class="script-card" style="background:#111111;border:1px solid #2d2d2d;border-radius:16px;padding:18px;box-shadow:0 4px 12px rgba(0,0,0,0.3);transition:transform 0.2s, box-shadow 0.2s;">
+                <div style="display:flex;justify-content:space-between;align-items:start;margin-bottom:6px;">
+                    <h4 style="font-size:15px;font-weight:600;color:#fff;margin:0;">${escapeHtml(s.name)}</h4>
+                    <span style="background:#22c55e;color:#fff;font-size:10px;font-weight:600;padding:2px 10px;border-radius:20px;text-transform:uppercase;">ON</span>
+                </div>
+                <p style="font-size:13px;color:var(--text-secondary);margin:4px 0 8px;">${escapeHtml(s.description)}</p>
+                <div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:12px;">
+                    <span style="font-size:11px;background:var(--bg-glass);padding:2px 8px;border-radius:12px;border:1px solid var(--border);color:var(--text-tertiary);">${escapeHtml(s.platform)}</span>
+                    <span style="font-size:11px;background:var(--bg-glass);padding:2px 8px;border-radius:12px;border:1px solid var(--border);color:var(--text-tertiary);">${escapeHtml(s.type)}</span>
+                </div>
+                <div style="margin-top:8px;">${actionBtn}</div>
+            </div>
+        `;
+    });
+    html += `</div>`;
+    return html;
+}
+
+// Funções globais para os botões
+window.openScript = function(url) {
+    window.open(url, '_blank');
+};
+
+window.copyScript = function(code) {
+    navigator.clipboard.writeText(code).then(() => {
+        showToast('Código copiado com sucesso!', 'success');
+    }).catch(() => {
+        // fallback
+        const ta = document.createElement('textarea');
+        ta.value = code;
+        document.body.appendChild(ta);
+        ta.select();
+        document.execCommand('copy');
+        ta.remove();
+        showToast('Código copiado com sucesso!', 'success');
+    });
+};
+
+// ===== API - ENVIO DE MENSAGENS (versão modificada com suporte a /sdf) =====
+
 async function sendMessage(content) {
+    // Verificar se há contexto de comando ativo
+    if (state.commandContext) {
+        if (state.commandContext.type === 'sdf' && state.commandContext.waitingFor === 'platform') {
+            // Usuário respondeu com a plataforma
+            state.commandContext = null;
+            const scripts = await loadScripts();
+            const found = searchScripts(scripts, content);
+            const conv = getCurrentConversation();
+            if (!conv) return;
+
+            let resposta;
+            if (found.length === 0) {
+                resposta = `Atualmente não encontrei nenhum script para "${escapeHtml(content)}" que esteja funcionando.`;
+            } else {
+                const count = found.length;
+                resposta = `Encontrei ${count} script${count>1?'s':''} para "${escapeHtml(content)}":\n\n${renderScriptCards(found)}`;
+            }
+
+            const aiMsg = {
+                role: 'assistant',
+                content: resposta,
+                timestamp: Date.now(),
+                responseTime: 0,
+                generatedFiles: [],
+                generatedImages: []
+            };
+            conv.messages.push(aiMsg);
+            saveConversations();
+            renderMessages();
+            return;
+        }
+    }
+
+    // Comando /sdf puro ou com parâmetro
+    if (content.trim().toLowerCase() === '/sdf') {
+        // Perguntar a plataforma
+        state.commandContext = { type: 'sdf', waitingFor: 'platform' };
+        const conv = getCurrentConversation();
+        if (!conv) createConversation();
+        const currentConv = getCurrentConversation();
+        const aiMsg = {
+            role: 'assistant',
+            content: '**Para qual plataforma você deseja os scripts?**\n\n(Ex.: Khan Academy, Sala do Futuro, CMSP...)',
+            timestamp: Date.now(),
+            responseTime: 0,
+            generatedFiles: [],
+            generatedImages: []
+        };
+        currentConv.messages.push(aiMsg);
+        saveConversations();
+        renderMessages();
+        return;
+    }
+
+    // Se começar com "/sdf " (ex: "/sdf Khan")
+    const sdfMatch = content.match(/^\/sdf\s+(.+)$/i);
+    if (sdfMatch) {
+        const platform = sdfMatch[1].trim();
+        state.commandContext = null; // não precisa perguntar
+        const scripts = await loadScripts();
+        const found = searchScripts(scripts, platform);
+        const conv = getCurrentConversation();
+        if (!conv) createConversation();
+        const currentConv = getCurrentConversation();
+
+        let resposta;
+        if (found.length === 0) {
+            resposta = `Atualmente não encontrei nenhum script para "${escapeHtml(platform)}" que esteja funcionando.`;
+        } else {
+            const count = found.length;
+            resposta = `Encontrei ${count} script${count>1?'s':''} para "${escapeHtml(platform)}":\n\n${renderScriptCards(found)}`;
+        }
+
+        const aiMsg = {
+            role: 'assistant',
+            content: resposta,
+            timestamp: Date.now(),
+            responseTime: 0,
+            generatedFiles: [],
+            generatedImages: []
+        };
+        currentConv.messages.push(aiMsg);
+        saveConversations();
+        renderMessages();
+        return;
+    }
+
+    // === FLUXO NORMAL DE CHAT (original) ===
     if (!state.currentConvId) {
         createConversation();
     }
