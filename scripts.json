@@ -1,0 +1,38 @@
+[
+  {
+    "id": 1,
+    "name": "Pular vídeos do Khan Academy",
+    "description": "Pula automaticamente vídeos e vai direto para os exercícios.",
+    "platform": "Khan Academy",
+    "type": "bookmarklet",
+    "status": "on",
+    "code": "javascript:(function(){ alert('Pulando vídeo...'); })();"
+  },
+  {
+    "id": 2,
+    "name": "Responder atividades CMSP",
+    "description": "Ajuda a responder atividades do CMSP mostrando respostas corretas.",
+    "platform": "CMSP",
+    "type": "bookmarklet",
+    "status": "on",
+    "code": "javascript:(function(){ alert('Respostas carregadas!'); })();"
+  },
+  {
+    "id": 3,
+    "name": "Modo escuro Sala do Futuro",
+    "description": "Ativa modo escuro na plataforma Sala do Futuro.",
+    "platform": "Sala do Futuro",
+    "type": "link",
+    "status": "on",
+    "url": "https://example.com/dark-mode"
+  },
+  {
+    "id": 4,
+    "name": "Download de material (desativado)",
+    "description": "Baixa materiais da plataforma (não funciona mais).",
+    "platform": "Sala do Futuro",
+    "type": "bookmarklet",
+    "status": "off",
+    "code": "javascript:(function(){ alert('Desativado'); })();"
+  }
+]
