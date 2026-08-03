@@ -19,20 +19,20 @@
   },
   {
     "id": 3,
-    "name": "Modo escuro Sala do Futuro",
-    "description": "Ativa modo escuro na plataforma Sala do Futuro.",
-    "platform": "Sala do Futuro",
+    "name": "Provas Sala do Futuro",
+    "description": "Consegue ganhar nota das Provas, mas é pago (R$15,00)",
+    "platform": "Sala do Futuro, Prova",
     "type": "link",
     "status": "on",
-    "url": "https://example.com/dark-mode"
+    "url": "https://discord.gg/moon-scripts-tm-1382157718965456956"
   },
   {
     "id": 4,
-    "name": "Download de material (desativado)",
-    "description": "Baixa materiais da plataforma (não funciona mais).",
-    "platform": "Sala do Futuro",
-    "type": "bookmarklet",
-    "status": "off",
-    "code": "javascript:(function(){ alert('Desativado'); })();"
+    "name": "Apostilas",
+    "description": "Respostas das apostilas",
+    "platform": "Sala do Futuro, Apostila",
+    "type": "link",
+    "status": "on",
+    "code": "https://kaihub.onrender.com/"
   }
 ]
